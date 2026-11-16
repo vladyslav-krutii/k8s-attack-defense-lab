@@ -1,0 +1,22 @@
+# The scenario 1 attack pod: privileged, with the node's / mounted.
+# Only ever sent with "kubectl apply --dry-run=server": it passes through
+# every admission check but is never stored or run.
+# Used by verify.sh (this scenario) and scripts/verify-admission.sh.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: verify-privileged-hostpath
+spec:
+  containers:
+    - name: probe
+      image: busybox:1.37
+      command: ["sleep", "1"]
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: host-root
+          mountPath: /host
+  volumes:
+    - name: host-root
+      hostPath:
+        path: /

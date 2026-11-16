@@ -31,27 +31,8 @@ if [ "$seen" = "$node" ]; then
 fi
 
 # b) guardrail
-out=$(kubectl -n "$NS" apply --dry-run=server -o name -f - 2>&1 <<'EOF'
-apiVersion: v1
-kind: Pod
-metadata:
-  name: verify-privileged-hostpath
-spec:
-  containers:
-    - name: probe
-      image: busybox:1.37
-      command: ["sleep", "1"]
-      securityContext:
-        privileged: true
-      volumeMounts:
-        - name: host-root
-          mountPath: /host
-  volumes:
-    - name: host-root
-      hostPath:
-        path: /
-EOF
-)
+out=$(kubectl -n "$NS" apply --dry-run=server -o name \
+  -f "$(dirname "$0")/probe-pod.yaml" 2>&1)
 rc=$?
 
 if [ $rc -eq 0 ]; then
