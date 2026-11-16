@@ -1,0 +1,207 @@
+# Offline policy tests: make policy-test  (kyverno test policies/kyverno/tests)
+# For every policy: its bad-* fixtures must FAIL and every other fixture
+# must PASS - so a policy that is too strict breaks the test as well as
+# one that is too lax.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: k8s-attack-defense-lab
+policies:
+  - ../base/disallow-privileged-containers.yaml
+  - ../base/disallow-host-path.yaml
+  - ../base/disallow-latest-tag.yaml
+  - ../base/require-resource-limits.yaml
+  - ../base/require-run-as-nonroot.yaml
+resources:
+  - resources.yaml
+results:
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers
+    kind: Pod
+    result: fail
+    resources:
+      - bad-pod-privileged
+      - bad-pod-init-privileged
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers
+    kind: Deployment
+    result: fail
+    resources:
+      - bad-deployment-privileged
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers
+    kind: Pod
+    result: pass
+    resources:
+      - good-pod
+      - good-pod-digest
+      - good-pod-registry-port
+      - bad-pod-hostpath
+      - bad-pod-latest
+      - bad-pod-no-tag
+      - bad-pod-registry-port-no-tag
+      - bad-pod-no-limits
+      - bad-pod-memory-limit-only
+      - bad-pod-no-runasnonroot
+      - bad-pod-container-runasnonroot-false
+      - bad-pod-runasuser-0
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers
+    kind: Deployment
+    result: pass
+    resources:
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-hostpath
+  - isValidatingPolicy: true
+    policy: disallow-host-path
+    kind: Pod
+    result: fail
+    resources:
+      - bad-pod-hostpath
+  - isValidatingPolicy: true
+    policy: disallow-host-path
+    kind: CronJob
+    result: fail
+    resources:
+      - bad-cronjob-hostpath
+  - isValidatingPolicy: true
+    policy: disallow-host-path
+    kind: Pod
+    result: pass
+    resources:
+      - good-pod
+      - good-pod-digest
+      - good-pod-registry-port
+      - bad-pod-privileged
+      - bad-pod-init-privileged
+      - bad-pod-latest
+      - bad-pod-no-tag
+      - bad-pod-registry-port-no-tag
+      - bad-pod-no-limits
+      - bad-pod-memory-limit-only
+      - bad-pod-no-runasnonroot
+      - bad-pod-container-runasnonroot-false
+      - bad-pod-runasuser-0
+  - isValidatingPolicy: true
+    policy: disallow-host-path
+    kind: Deployment
+    result: pass
+    resources:
+      - good-deployment
+      - bad-deployment-privileged
+  - isValidatingPolicy: true
+    policy: disallow-latest-tag
+    kind: Pod
+    result: fail
+    resources:
+      - bad-pod-latest
+      - bad-pod-no-tag
+      - bad-pod-registry-port-no-tag
+  - isValidatingPolicy: true
+    policy: disallow-latest-tag
+    kind: Pod
+    result: pass
+    resources:
+      - good-pod
+      - good-pod-digest
+      - good-pod-registry-port
+      - bad-pod-privileged
+      - bad-pod-init-privileged
+      - bad-pod-hostpath
+      - bad-pod-no-limits
+      - bad-pod-memory-limit-only
+      - bad-pod-no-runasnonroot
+      - bad-pod-container-runasnonroot-false
+      - bad-pod-runasuser-0
+  - isValidatingPolicy: true
+    policy: disallow-latest-tag
+    kind: Deployment
+    result: pass
+    resources:
+      - good-deployment
+      - bad-deployment-privileged
+  - isValidatingPolicy: true
+    policy: disallow-latest-tag
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-hostpath
+  - isValidatingPolicy: true
+    policy: require-resource-limits
+    kind: Pod
+    result: fail
+    resources:
+      - bad-pod-no-limits
+      - bad-pod-memory-limit-only
+  - isValidatingPolicy: true
+    policy: require-resource-limits
+    kind: Pod
+    result: pass
+    resources:
+      - good-pod
+      - good-pod-digest
+      - good-pod-registry-port
+      - bad-pod-privileged
+      - bad-pod-init-privileged
+      - bad-pod-hostpath
+      - bad-pod-latest
+      - bad-pod-no-tag
+      - bad-pod-registry-port-no-tag
+      - bad-pod-no-runasnonroot
+      - bad-pod-container-runasnonroot-false
+      - bad-pod-runasuser-0
+  - isValidatingPolicy: true
+    policy: require-resource-limits
+    kind: Deployment
+    result: pass
+    resources:
+      - good-deployment
+      - bad-deployment-privileged
+  - isValidatingPolicy: true
+    policy: require-resource-limits
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-hostpath
+  - isValidatingPolicy: true
+    policy: require-run-as-nonroot
+    kind: Pod
+    result: fail
+    resources:
+      - bad-pod-no-runasnonroot
+      - bad-pod-container-runasnonroot-false
+      - bad-pod-runasuser-0
+  - isValidatingPolicy: true
+    policy: require-run-as-nonroot
+    kind: Pod
+    result: pass
+    resources:
+      - good-pod
+      - good-pod-digest
+      - good-pod-registry-port
+      - bad-pod-privileged
+      - bad-pod-init-privileged
+      - bad-pod-hostpath
+      - bad-pod-latest
+      - bad-pod-no-tag
+      - bad-pod-registry-port-no-tag
+      - bad-pod-no-limits
+      - bad-pod-memory-limit-only
+  - isValidatingPolicy: true
+    policy: require-run-as-nonroot
+    kind: Deployment
+    result: pass
+    resources:
+      - good-deployment
+      - bad-deployment-privileged
+  - isValidatingPolicy: true
+    policy: require-run-as-nonroot
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-hostpath

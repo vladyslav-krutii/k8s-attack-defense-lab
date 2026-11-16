@@ -1,0 +1,61 @@
+# Supply chain (scenario 6 preview): images must be pinned.
+# ":latest" (or no tag, which means latest) is mutable: the same manifest can
+# run different code tomorrow, rollbacks are impossible, and a scanned image
+# is not necessarily the one that runs. A digest (@sha256:...) is the
+# strongest pin; a specific tag is the minimum.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow latest and missing image tags
+    policies.kyverno.io/category: k8s-attack-defense-lab (scenario 6)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Every container image must carry an explicit tag other than
+      "latest", or a digest.
+spec:
+  validationActions: ["Deny"]
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["pods/ephemeralcontainers"]
+  variables:
+    - name: podSpec
+      expression: >-
+        object.spec.?jobTemplate.?spec.?template.?spec.orValue(
+        object.spec.?template.?spec.orValue(object.spec))
+    - name: allContainers
+      expression: >-
+        variables.podSpec.containers +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # A tag is the part after the LAST "/" containing ":". Looking at the
+    # whole string would mistake a registry port ("localhost:5000/app") for
+    # a tag.
+    - expression: >-
+        variables.allContainers.all(c,
+        c.image.contains('@') ||
+        c.image.substring(c.image.lastIndexOf('/') + 1).contains(':'))
+      message: "An explicit image tag or digest is required."
+    - expression: >-
+        variables.allContainers.all(c, !c.image.endsWith(':latest'))
+      message: "The mutable 'latest' tag is not allowed; pin a version or digest."

@@ -67,6 +67,9 @@ kubectl: ## Install pinned kubectl v1.36.4 into ~/.local/bin (checksum-verified)
 kyverno-cli: ## Install pinned Kyverno CLI into ~/.local/bin (checksum-verified)
 	bash scripts/install-kyverno-cli.sh
 
+policy-test: ## Offline Kyverno policy tests (no cluster needed)
+	kyverno test policies/kyverno/tests --require-tests
+
 kyverno: ## Install/upgrade Kyverno (admission policy engine) via Helm
 	$(HELM) repo add kyverno https://kyverno.github.io/kyverno/ --force-update >/dev/null
 	@# upgrade --install: the same command installs or upgrades (idempotent).

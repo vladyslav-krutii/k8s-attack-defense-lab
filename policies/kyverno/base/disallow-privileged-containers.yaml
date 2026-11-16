@@ -1,0 +1,63 @@
+# Blocks scenario 1 (part 1): privileged containers.
+# Pattern shared by all five policies:
+#  - matchConstraints covers Pods AND every pod controller, so a bad
+#    Deployment is rejected at "kubectl apply" time. Matching only Pods would
+#    admit the Deployment and leave it silently stuck, because its
+#    ReplicaSet could never create a pod.
+#  - variables.podSpec finds the pod template wherever it lives:
+#    Pod .spec / Deployment .spec.template.spec / CronJob .spec.jobTemplate...
+#  - validationActions here is Deny; policies/kyverno/{audit,enforce} decide
+#    the real action and which namespaces the policy applies to.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow privileged containers
+    policies.kyverno.io/category: k8s-attack-defense-lab (scenario 1)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      A privileged container gets all Linux capabilities and all host
+      devices, without seccomp/AppArmor confinement. Combined with root or a
+      hostPath mount it is a container escape.
+spec:
+  validationActions: ["Deny"]
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+      # "kubectl debug" adds containers through this subresource.
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["pods/ephemeralcontainers"]
+  variables:
+    - name: podSpec
+      expression: >-
+        object.spec.?jobTemplate.?spec.?template.?spec.orValue(
+        object.spec.?template.?spec.orValue(object.spec))
+    - name: allContainers
+      expression: >-
+        variables.podSpec.containers +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(c,
+        c.?securityContext.?privileged.orValue(false) == false)
+      message: >-
+        Privileged containers are not allowed: securityContext.privileged
+        must be false or unset in every container.

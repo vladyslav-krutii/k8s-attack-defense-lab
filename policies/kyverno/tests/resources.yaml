@@ -1,0 +1,332 @@
+# Test fixtures for kyverno-test.yaml. Every bad-* resource violates
+# EXACTLY ONE policy and passes the other four, so each expected 'fail'
+# proves one specific rule. Generated once; edit by hand from now on.
+---
+# Compliant with all five policies.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+---
+# Digest instead of a tag: pinned, passes the tag policy.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-digest
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: busybox@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+---
+# Registry with a port AND a tag: passes.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-registry-port
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: localhost:5000/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+---
+# disallow-privileged-containers
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-privileged
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+    securityContext:
+      privileged: true
+---
+# disallow-privileged-containers: init containers count too.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-init-privileged
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+  initContainers:
+  - name: init
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+    securityContext:
+      privileged: true
+---
+# disallow-host-path
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-hostpath
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+  volumes:
+  - name: host
+    hostPath:
+      path: /
+---
+# disallow-latest-tag
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-latest
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:latest
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+---
+# disallow-latest-tag: no tag means latest.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-no-tag
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+---
+# disallow-latest-tag: ':5000' is a registry port, not a tag.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-registry-port-no-tag
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: localhost:5000/app
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+---
+# require-resource-limits
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-no-limits
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+---
+# require-resource-limits: CPU limit missing.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-memory-limit-only
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        memory: 64Mi
+---
+# require-run-as-nonroot: nothing set means root is allowed.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-no-runasnonroot
+spec:
+  securityContext: {}
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+---
+# require-run-as-nonroot: a container overrides the pod setting.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-container-runasnonroot-false
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+    securityContext:
+      runAsNonRoot: false
+---
+# require-run-as-nonroot: explicit UID 0.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-runasuser-0
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+    securityContext:
+      runAsUser: 0
+---
+# Pod controllers: the policy must read spec.template.spec.
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  selector:
+    matchLabels:
+      app: x
+  template:
+    metadata:
+      labels:
+        app: x
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: app
+        image: registry.example/app:1.0
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+metadata:
+  name: good-deployment
+---
+# disallow-privileged-containers, inside a Deployment template.
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  selector:
+    matchLabels:
+      app: x
+  template:
+    metadata:
+      labels:
+        app: x
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: app
+        image: registry.example/app:1.0
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          privileged: true
+metadata:
+  name: bad-deployment-privileged
+---
+# disallow-host-path, inside a CronJob's jobTemplate.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bad-cronjob-hostpath
+spec:
+  schedule: 0 * * * *
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+          containers:
+          - name: app
+            image: registry.example/app:1.0
+            resources:
+              limits:
+                cpu: 100m
+                memory: 64Mi
+          restartPolicy: Never
+          volumes:
+          - name: host
+            hostPath:
+              path: /

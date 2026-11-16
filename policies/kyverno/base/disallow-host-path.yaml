@@ -1,0 +1,45 @@
+# Blocks scenario 1 (part 2): hostPath volumes.
+# Even read-only hostPath mounts leak node data (kubelet credentials, other
+# pods' tokens under /var/lib/kubelet), and a writable one is a node takeover.
+# Pods that truly need node access (CNI, log agents) belong in tightly
+# controlled infrastructure namespaces, not next to applications.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-host-path
+  annotations:
+    policies.kyverno.io/title: Disallow hostPath volumes
+    policies.kyverno.io/category: k8s-attack-defense-lab (scenario 1)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      hostPath volumes expose the node's filesystem to the container.
+spec:
+  validationActions: ["Deny"]
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  variables:
+    - name: podSpec
+      expression: >-
+        object.spec.?jobTemplate.?spec.?template.?spec.orValue(
+        object.spec.?template.?spec.orValue(object.spec))
+  validations:
+    - expression: >-
+        variables.podSpec.?volumes.orValue([]).all(v, !has(v.hostPath))
+      message: >-
+        hostPath volumes are not allowed: spec.volumes[*].hostPath must be
+        unset.

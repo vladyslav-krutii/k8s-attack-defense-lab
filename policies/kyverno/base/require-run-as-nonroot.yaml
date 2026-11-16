@@ -1,0 +1,71 @@
+# Blocks the root part of scenario 1 (and scenario 5 preview).
+# Mirrors the Pod Security "restricted" rules:
+#  1. runAsNonRoot must be true - set on the pod, or on every container,
+#     and never overridden to false. The kubelet then refuses to start any
+#     container whose effective UID is 0, even if the image says USER root.
+#  2. runAsUser must never be 0 explicitly (pod or container).
+# Exception, as in PSA: pods with user namespaces (hostUsers: false), where
+# UID 0 inside the pod maps to an unprivileged UID on the node.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-run-as-nonroot
+  annotations:
+    policies.kyverno.io/title: Require containers to run as non-root
+    policies.kyverno.io/category: k8s-attack-defense-lab (scenario 1)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Containers must set runAsNonRoot to true and must not run as UID 0.
+spec:
+  validationActions: ["Deny"]
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["pods/ephemeralcontainers"]
+  variables:
+    - name: podSpec
+      expression: >-
+        object.spec.?jobTemplate.?spec.?template.?spec.orValue(
+        object.spec.?template.?spec.orValue(object.spec))
+    - name: allContainers
+      expression: >-
+        variables.podSpec.containers +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+    - name: userNamespacePod
+      expression: "variables.podSpec.?hostUsers.orValue(true) == false"
+    - name: podRunAsNonRoot
+      expression: "variables.podSpec.?securityContext.?runAsNonRoot"
+  validations:
+    - expression: >-
+        variables.userNamespacePod ||
+        (variables.podRunAsNonRoot.orValue(true) == true &&
+         variables.allContainers.all(c,
+           c.?securityContext.?runAsNonRoot.orValue(
+             variables.podRunAsNonRoot.orValue(false)) == true))
+      message: >-
+        Running as root is not allowed: set securityContext.runAsNonRoot to
+        true on the pod or on every container, and never to false.
+    - expression: >-
+        variables.userNamespacePod ||
+        (variables.podSpec.?securityContext.?runAsUser.orValue(1) != 0 &&
+         variables.allContainers.all(c,
+           c.?securityContext.?runAsUser.orValue(1) != 0))
+      message: "runAsUser: 0 (root) is not allowed on the pod or any container."
