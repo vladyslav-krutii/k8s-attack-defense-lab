@@ -1,0 +1,3 @@
+# Force LF everywhere. Scripts with CRLF fail inside Linux containers and WSL
+# with errors like "bad interpreter: /usr/bin/env bash^M".
+* text=auto eol=lf

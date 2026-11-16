@@ -1,0 +1,29 @@
+# Calico configuration consumed by the Tigera operator.
+# Based on the upstream manifests/custom-resources.yaml (Calico v3.33), with two
+# changes: the pod CIDR matches our kind config, and the optional Goldmane /
+# Whisker observability components are left out to keep the lab light.
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  calicoNetwork:
+    ipPools:
+      - name: default-ipv4-ippool
+        # Must equal networking.podSubnet in cluster/kind-config.yaml.
+        cidr: 10.244.0.0/16
+        # Each node gets a /26 (64 addresses) block out of the pool.
+        blockSize: 26
+        # Encapsulate pod traffic in VXLAN only when crossing subnets. kind
+        # nodes share one Docker bridge, so traffic is effectively unencapsulated.
+        encapsulation: VXLANCrossSubnet
+        # SNAT pod traffic leaving the cluster so replies can find their way back.
+        natOutgoing: Enabled
+        nodeSelector: all()
+---
+# Calico API server, kept as in the upstream manifest.
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}

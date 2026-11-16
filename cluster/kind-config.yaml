@@ -1,0 +1,32 @@
+# kind cluster for k8s-attack-defense-lab.
+# Local only: the API server and all nodes are Docker containers on this machine.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: k8s-lab
+
+networking:
+  # kind ships "kindnet" as its default CNI. We turn it off and install Calico
+  # ourselves so that we control (and can explain) who enforces NetworkPolicy.
+  # Until a CNI is installed, nodes stay NotReady - that is expected.
+  disableDefaultCNI: true
+  # Pod IP range. Must match the IPPool CIDR in cluster/calico/custom-resources.yaml.
+  # Calico's upstream default is 192.168.0.0/16, which often overlaps with home
+  # LANs, so we use 10.244.0.0/16 instead.
+  podSubnet: 10.244.0.0/16
+  # Bind the API server to loopback only (this is also kind's default).
+  # Written explicitly because "no public exposure" is a project requirement.
+  apiServerAddress: 127.0.0.1
+
+nodes:
+  # Node image is pinned by tag AND digest: the same supply-chain hygiene we
+  # enforce on workloads in scenario 6. Digests come from the kind v0.33.0
+  # release notes - when you upgrade kind, take the new digest from there.
+  # K8s 1.36 (not the newest 1.37) on purpose: Calico/Kyverno/Falco support
+  # for a brand-new minor usually lags by a few weeks.
+  - role: control-plane
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  # A separate worker so workloads do not share a node with the control plane.
+  # This makes scenario 1 (container -> node escape) honest: we compromise a
+  # worker, and it lets us test NetworkPolicy across nodes, not just on one.
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed

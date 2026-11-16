@@ -1,0 +1,29 @@
+# Base: the application itself, with NO security posture of its own.
+# No securityContext, no NetworkPolicy, no resource limits, default RBAC.
+# The two overlays then diverge from this identical starting point:
+#   overlays/vulnerable - adds realistic misconfigurations
+#   overlays/hardened   - adds the defenses
+# That keeps the comparison honest: same app, same images, only config differs.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Every resource below lands in this namespace.
+namespace: demo
+
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - db.yaml
+  - api.yaml
+  - web.yaml
+
+# Generated ConfigMaps get a content-hash suffix (web-nginx-conf-<hash>).
+# Changing a file changes the name, which changes the pod template, which
+# triggers a rollout - pods never keep running with stale config.
+configMapGenerator:
+  - name: web-nginx-conf
+    files:
+      - web/default.conf
+  - name: web-html
+    files:
+      - web/index.html

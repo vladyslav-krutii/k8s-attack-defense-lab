@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels: {app: web}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: web}
+  template:
+    metadata:
+      labels: {app: web}
+    spec:
+      containers:
+        - name: nginx
+          # The "unprivileged" nginx build listens on 8080 and is able to run
+          # as a non-root user. Stock nginx binds port 80 and expects root,
+          # which would make the hardened overlay much harder later.
+          image: nginxinc/nginx-unprivileged:1.29.8-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            - name: html
+              mountPath: /usr/share/nginx/html
+      volumes:
+        # Names without the hash suffix: Kustomize rewrites these references
+        # to the generated names automatically.
+        - name: nginx-conf
+          configMap:
+            name: web-nginx-conf
+        - name: html
+          configMap:
+            name: web-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels: {app: web}
+spec:
+  # ClusterIP only: the app is reachable from your machine solely through
+  # "kubectl port-forward", never exposed on a host port.
+  selector: {app: web}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

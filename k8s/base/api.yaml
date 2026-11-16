@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: {app: api}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: api}
+  template:
+    metadata:
+      labels: {app: api}
+    spec:
+      containers:
+        - name: api
+          # Built locally and loaded into kind with "make load" - there is no
+          # registry to pull from, so IfNotPresent is required. With "Always"
+          # the kubelet would try Docker Hub and fail with ErrImagePull.
+          image: k8s-lab/api:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: PGHOST
+              value: db
+            - name: PGUSER
+              value: app
+            - name: PGDATABASE
+              value: notes
+            # Secret -> env var is the common "default" way. Scenario 4 shows
+            # why it leaks more easily than a mounted file.
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
+          # Readiness gates traffic (checks the DB); liveness restarts a hung
+          # process (does not check the DB). See comments in server.ts.
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels: {app: api}
+spec:
+  selector: {app: api}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

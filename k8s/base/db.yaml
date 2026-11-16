@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  labels: {app: db}
+spec:
+  replicas: 1
+  # Recreate: never run two Postgres instances at once during an update.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: db}
+  template:
+    metadata:
+      labels: {app: db}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17.12-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: app
+            - name: POSTGRES_DB
+              value: notes
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
+            # Postgres refuses to initialise in a non-empty directory, and a
+            # mounted volume can contain "lost+found". Use a subdirectory.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "app", "-d", "notes"]
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        # Trade-off: emptyDir means data is lost when the pod is deleted.
+        # Fine for a lab (clean state on every deploy); production would use
+        # a StatefulSet with a PersistentVolumeClaim.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  labels: {app: db}
+spec:
+  selector: {app: db}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
