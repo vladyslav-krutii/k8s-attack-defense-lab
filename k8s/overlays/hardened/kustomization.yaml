@@ -1,26 +1,24 @@
-# HARDENED overlay - built layer by layer.
+# HARDENED overlay: the same base app, with defense layers on top.
+# Built from the plain base - it inherits nothing from the vulnerable overlay.
+# (The git history builds it layer by layer on top of "vulnerable" to measure
+# which layer blocks which scenario; see the Phase 3 commits.)
 #
-# TEMPORARY: while the layers are being added, this overlay starts FROM the
-# vulnerable overlay, so each layer can be measured on its own: after adding
-# a layer, exactly one scenario should flip from EXPLOITABLE to BLOCKED.
-# The undo-* patches remove the vulnerable patches. Once all layers are in,
-# the overlay is rebased on ../../base and the undo-* files are deleted.
+#   Layer 1  Pod Security      -> blocks scenario 1 (privileged + hostPath)
+#   Layer 2  Identity & RBAC   -> blocks scenario 2 (token + over-permissive RBAC)
+#   Layer 3  Network policies  -> blocks scenario 3 (lateral movement to db)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: demo
 
 resources:
-  - ../vulnerable
-  # Layer 2: dedicated ServiceAccounts for api and db.
+  - ../../base
+  # Layer 2: one ServiceAccount per workload, no RoleBindings.
   - serviceaccounts.yaml
   # Layer 3: default-deny NetworkPolicies plus explicit allows.
   - networkpolicies.yaml
 
 patches:
-  # Undo the scenario 1 misconfiguration (privileged, root, hostPath).
-  - path: patches/undo-01-web-privileged-hostpath.yaml
-
   # --- Layer 1: Pod Security -----------------------------------------------
   # Admission: enforce the "restricted" Pod Security Standard.
   - path: namespace-psa.yaml
@@ -29,10 +27,6 @@ patches:
   - path: patches/api-security.yaml
   - path: patches/db-security.yaml
 
-  # Undo the scenario 2 misconfiguration (web bound to "edit").
-  - path: patches/undo-02-web-rbac.yaml
-
   # --- Layer 2: Identity & RBAC --------------------------------------------
-  # No RoleBindings at all: none of the workloads needs the Kubernetes API.
-  - path: patches/web-serviceaccount.yaml
+  # Each Deployment uses its own ServiceAccount, without an API token.
   - path: patches/identity.yaml

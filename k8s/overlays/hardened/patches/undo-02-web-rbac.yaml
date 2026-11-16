@@ -1,7 +1,0 @@
-# TEMPORARY (removed when the overlay is rebased on base): deletes the
-# scenario 2 RoleBinding inherited from the vulnerable overlay.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: web-edit
-$patch: delete
