@@ -1,0 +1,28 @@
+# Layer 1: web satisfies the "restricted" Pod Security Standard.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      securityContext:
+        # Kubelet refuses to start the container if it would run as UID 0.
+        runAsNonRoot: true
+        # Explicit numeric IDs; 101 is the image's own "nginx" user.
+        runAsUser: 101
+        runAsGroup: 101
+        # Default seccomp filter of the container runtime: blocks syscalls
+        # rarely needed by apps but common in kernel exploits.
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nginx
+          securityContext:
+            # No setuid/setcap gains: the process can never get more
+            # privileges than it started with (sets no_new_privs).
+            allowPrivilegeEscalation: false
+            # nginx-unprivileged listens on 8080, so it needs no capability
+            # at all (not even NET_BIND_SERVICE for ports < 1024).
+            capabilities:
+              drop: ["ALL"]

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    lab/overlay: hardened
+    # enforce=restricted: the API server REJECTS pods that are privileged,
+    # use hostPath/hostNetwork/hostPID, run as root, keep capabilities,
+    # allow privilege escalation or lack a seccomp profile.
+    pod-security.kubernetes.io/enforce: restricted
+    # Pin the enforced rules to a Kubernetes version. Without a pin
+    # ("latest"), a cluster upgrade can add new checks and suddenly reject
+    # pods that were fine yesterday. Raise it deliberately after testing.
+    pod-security.kubernetes.io/enforce-version: v1.36
+    # warn/audit track "latest", so upcoming rules show up as warnings
+    # before the enforce pin is raised.
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest

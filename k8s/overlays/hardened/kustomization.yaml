@@ -1,0 +1,26 @@
+# HARDENED overlay - built layer by layer.
+#
+# TEMPORARY: while the layers are being added, this overlay starts FROM the
+# vulnerable overlay, so each layer can be measured on its own: after adding
+# a layer, exactly one scenario should flip from EXPLOITABLE to BLOCKED.
+# The undo-* patches remove the vulnerable patches. Once all layers are in,
+# the overlay is rebased on ../../base and the undo-* files are deleted.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: demo
+
+resources:
+  - ../vulnerable
+
+patches:
+  # Undo the scenario 1 misconfiguration (privileged, root, hostPath).
+  - path: patches/undo-01-web-privileged-hostpath.yaml
+
+  # --- Layer 1: Pod Security -----------------------------------------------
+  # Admission: enforce the "restricted" Pod Security Standard.
+  - path: namespace-psa.yaml
+  # Workloads: securityContext that satisfies "restricted".
+  - path: patches/web-security.yaml
+  - path: patches/api-security.yaml
+  - path: patches/db-security.yaml

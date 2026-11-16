@@ -1,0 +1,21 @@
+# Layer 1: api satisfies the "restricted" Pod Security Standard.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # Matches "USER 1000:1000" in app/api/Dockerfile.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

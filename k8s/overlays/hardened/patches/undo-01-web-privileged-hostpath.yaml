@@ -1,0 +1,21 @@
+# TEMPORARY (removed when the overlay is rebased on base): removes the
+# scenario 1 patch inherited from the vulnerable overlay.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      containers:
+        - name: nginx
+          securityContext:
+            # null deletes the field in a strategic merge patch.
+            privileged: null
+            runAsUser: null
+          volumeMounts:
+            - mountPath: /host
+              $patch: delete
+      volumes:
+        - name: host-root
+          $patch: delete

@@ -1,0 +1,26 @@
+# Layer 1: db satisfies the "restricted" Pod Security Standard.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # The postgres image declares no USER: its entrypoint starts as root
+        # and drops to "postgres" (UID 70 on alpine). Starting directly as
+        # UID 70 skips the root phase entirely; the entrypoint supports it.
+        runAsUser: 70
+        runAsGroup: 70
+        # Volumes (the emptyDir data dir) become group-owned by GID 70,
+        # so Postgres can write to them without running as root.
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
