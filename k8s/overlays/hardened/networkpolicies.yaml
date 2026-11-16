@@ -1,0 +1,103 @@
+# Layer 3: network segmentation. Enforced by Calico (proven in Phase 0).
+#
+# Model: deny everything, then allow exactly the arrows of the architecture
+#   (anyone) -> web:8080 -> api:3000 -> db:5432     + DNS for web and api
+# NetworkPolicies are additive: a pod selected by several policies gets the
+# union of their allow rules. The default-deny policy has no rules, so it
+# only adds "this pod is now isolated" for both directions.
+
+# 1. Default deny: every pod in the namespace, ingress AND egress.
+#    Egress matters as much as ingress: it stops a compromised pod from
+#    scanning, reaching the API server or exfiltrating data.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+# 2. DNS, only for the pods that resolve service names (web -> "api",
+#    api -> "db"). db never initiates connections, so it gets no egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: ["web", "api"]}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        # Both selectors in ONE "to" entry = AND: pods labelled kube-dns
+        # inside kube-system. As two separate entries they would mean OR,
+        # i.e. "anything in kube-system, or kube-dns pods anywhere".
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# 3. web: the edge tier. Accepts HTTP from anywhere, may only call api.
+#    Trade-off: "from anywhere" includes every pod in the cluster. With an
+#    ingress controller this would be narrowed to its namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web
+spec:
+  podSelector:
+    matchLabels: {app: web}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app: api}
+      ports:
+        - {protocol: TCP, port: 3000}
+---
+# 4. api: reachable only from web, may only call db.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api
+spec:
+  podSelector:
+    matchLabels: {app: api}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: web}
+      ports:
+        - {protocol: TCP, port: 3000}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app: db}
+      ports:
+        - {protocol: TCP, port: 5432}
+---
+# 5. db: reachable only from api. No egress rules at all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db
+spec:
+  podSelector:
+    matchLabels: {app: db}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: api}
+      ports:
+        - {protocol: TCP, port: 5432}

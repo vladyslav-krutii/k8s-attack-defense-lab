@@ -14,6 +14,8 @@ resources:
   - ../vulnerable
   # Layer 2: dedicated ServiceAccounts for api and db.
   - serviceaccounts.yaml
+  # Layer 3: default-deny NetworkPolicies plus explicit allows.
+  - networkpolicies.yaml
 
 patches:
   # Undo the scenario 1 misconfiguration (privileged, root, hostPath).
