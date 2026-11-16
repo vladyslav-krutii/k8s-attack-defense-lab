@@ -16,3 +16,5 @@ patches:
   # Pod Security Admission: nothing enforced, but warn/audit at "restricted"
   # so "kubectl apply" prints what the hardened overlay will have to fix.
   - path: namespace-psa.yaml
+  # Scenario 1: web runs privileged, as root, with the node's / mounted.
+  - path: patches/01-web-privileged-hostpath.yaml

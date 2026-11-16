@@ -1,0 +1,33 @@
+# Scenario 1: privileged container + hostPath mount of the node's root FS.
+# Typical origin: "nginx can't write its logs / we need to debug the node,
+# just make it privileged and mount the host". Log shippers, monitoring
+# agents and debug pods are where this shows up in real clusters.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      containers:
+        - name: nginx
+          securityContext:
+            # privileged: all Linux capabilities, all host devices, no
+            # seccomp/AppArmor confinement. The container boundary is
+            # effectively gone for a root process.
+            privileged: true
+            # Overrides the image's non-root USER 101. Privileged pods almost
+            # always run as root in practice; without root the capabilities
+            # above are not effective.
+            runAsUser: 0
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+      volumes:
+        # The node's "/" mounted read-write into the container: kubelet
+        # credentials, every pod's mounted secrets and tokens, containerd
+        # state, /etc - all reachable at /host.
+        - name: host-root
+          hostPath:
+            path: /
+            type: Directory
