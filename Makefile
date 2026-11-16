@@ -19,7 +19,7 @@ NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
         build load base vulnerable hardened verify-all smoke port-forward undeploy \
-        helm kyverno
+        helm kubectl kyverno-cli kyverno
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -60,6 +60,12 @@ status: ## Show nodes, Calico status and system pods
 
 helm: ## Install pinned Helm into ~/.local/bin (checksum-verified)
 	bash scripts/install-helm.sh
+
+kubectl: ## Install pinned kubectl v1.36.4 into ~/.local/bin (checksum-verified)
+	bash scripts/install-kubectl.sh
+
+kyverno-cli: ## Install pinned Kyverno CLI into ~/.local/bin (checksum-verified)
+	bash scripts/install-kyverno-cli.sh
 
 kyverno: ## Install/upgrade Kyverno (admission policy engine) via Helm
 	$(HELM) repo add kyverno https://kyverno.github.io/kyverno/ --force-update >/dev/null
