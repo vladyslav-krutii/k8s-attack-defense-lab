@@ -1,0 +1,27 @@
+# Scenario 2: over-permissive RBAC for the web pod's service account.
+# Typical origin: the app needed to read ONE ConfigMap, got "forbidden", and
+# someone bound the built-in "edit" role to make the error go away.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web
+# true is also the default. Written out because this is the switch that puts
+# a usable API token into every pod running as this service account.
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: web-edit
+subjects:
+  - kind: ServiceAccount
+    name: web
+    namespace: demo
+roleRef:
+  # Built-in ClusterRole "edit", bound in this namespace only. Still far too
+  # much: read/write Secrets, create and exec into pods, edit Deployments.
+  # Being namespaced does not make it safe - everything valuable for this
+  # app lives in this namespace.
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit

@@ -11,6 +11,8 @@ namespace: demo
 
 resources:
   - ../../base
+  # Scenario 2: service account "web" bound to the built-in "edit" role.
+  - rbac-web.yaml
 
 patches:
   # Pod Security Admission: nothing enforced, but warn/audit at "restricted"
@@ -18,3 +20,5 @@ patches:
   - path: namespace-psa.yaml
   # Scenario 1: web runs privileged, as root, with the node's / mounted.
   - path: patches/01-web-privileged-hostpath.yaml
+  # Scenario 2: web uses that service account, token auto-mounted.
+  - path: patches/02-web-serviceaccount.yaml
