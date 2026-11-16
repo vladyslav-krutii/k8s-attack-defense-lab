@@ -1,0 +1,36 @@
+# AUDIT variant: violations are recorded in PolicyReports, nothing is
+# blocked. Applies to namespaces labelled lab/kyverno=audit (the vulnerable
+# overlay), so the misconfigured app still deploys - and every violation is
+# visible with "kubectl get policyreport -n demo".
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+nameSuffix: -audit
+patches:
+  - target:
+      group: policies.kyverno.io
+      kind: ValidatingPolicy
+    patch: |-
+      - op: replace
+        path: /spec/validationActions
+        value: ["Audit"]
+      - op: add
+        path: /spec/matchConstraints/namespaceSelector
+        value:
+          matchExpressions:
+            - key: lab/kyverno
+              operator: In
+              values: ["audit"]
+  # TEMPORARY until Phase 5 (scenario 5): the hardened workloads have no
+  # resource limits yet, so this one policy only audits in "enforce"
+  # namespaces too (and is left out of ../enforce). Phase 5 adds limits to
+  # the hardened overlay and moves this policy back to enforce.
+  - target:
+      group: policies.kyverno.io
+      kind: ValidatingPolicy
+      name: require-resource-limits
+    patch: |-
+      - op: replace
+        path: /spec/matchConstraints/namespaceSelector/matchExpressions/0/values
+        value: ["audit", "enforce"]

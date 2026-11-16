@@ -1,0 +1,34 @@
+# ENFORCE variant: violating requests are rejected at admission.
+# Applies to namespaces labelled lab/kyverno=enforce (the hardened overlay,
+# and the admission probe namespace used by scripts/verify-admission.sh).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+nameSuffix: -enforce
+patches:
+  - target:
+      group: policies.kyverno.io
+      kind: ValidatingPolicy
+    patch: |-
+      - op: replace
+        path: /spec/validationActions
+        value: ["Deny"]
+      - op: add
+        path: /spec/matchConstraints/namespaceSelector
+        value:
+          matchExpressions:
+            - key: lab/kyverno
+              operator: In
+              values: ["enforce"]
+  # TEMPORARY until Phase 5: see ../audit - limits are audited, not enforced.
+  - target:
+      group: policies.kyverno.io
+      kind: ValidatingPolicy
+      name: require-resource-limits
+    patch: |-
+      $patch: delete
+      apiVersion: policies.kyverno.io/v1
+      kind: ValidatingPolicy
+      metadata:
+        name: require-resource-limits

@@ -15,3 +15,6 @@ metadata:
     # to measure how far a namespace is from "restricted" before enforcing.
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
+    # Kyverno policies in AUDIT mode (policies/kyverno/audit): violations
+    # land in PolicyReports, nothing is blocked, so the demo still deploys.
+    lab/kyverno: audit

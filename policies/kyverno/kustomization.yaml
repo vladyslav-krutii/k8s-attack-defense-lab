@@ -1,0 +1,12 @@
+# Installs BOTH variants cluster-wide. Which one applies to a namespace is
+# chosen by its label, the same way Pod Security Admission works:
+#   lab/kyverno: audit    -> *-audit policies   (vulnerable overlay)
+#   lab/kyverno: enforce  -> *-enforce policies (hardened overlay)
+#   no label              -> no Kyverno policy applies
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - audit
+  - enforce
+  # Lets Kyverno's reports controller read pods/ephemeralcontainers.
+  - rbac-reports-ephemeralcontainers.yaml

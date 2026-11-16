@@ -19,7 +19,7 @@ NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
         build load base vulnerable hardened verify-all smoke port-forward undeploy \
-        helm kubectl kyverno-cli kyverno
+        helm kubectl kyverno-cli kyverno policy-test policies verify-admission
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -69,6 +69,26 @@ kyverno-cli: ## Install pinned Kyverno CLI into ~/.local/bin (checksum-verified)
 
 policy-test: ## Offline Kyverno policy tests (no cluster needed)
 	kyverno test policies/kyverno/tests --require-tests
+
+policies: ## Apply Kyverno policies (audit + enforce variants, chosen by ns label)
+	@# RBAC first: ClusterRole aggregation is asynchronous, and Kyverno
+	@# computes a policy's readiness when the policy is created. Policies
+	@# created before the permission lands stay READY=false until changed.
+	$(KUBECTL) apply -f policies/kyverno/rbac-reports-ephemeralcontainers.yaml
+	@for i in $$(seq 1 30); do \
+	  [ "$$($(KUBECTL) auth can-i list pods --subresource=ephemeralcontainers \
+	    --as=system:serviceaccount:kyverno:kyverno-reports-controller)" = yes ] && break; \
+	  sleep 1; \
+	done
+	$(KUBECTL) apply -k policies/kyverno
+	@# A policy enforces only once Kyverno has configured its webhook; wait
+	@# for READY so a check run right after this target is not a false result.
+	$(KUBECTL) wait validatingpolicy --all --timeout=90s \
+	  --for=jsonpath='{.status.conditionStatus.ready}'=true
+	$(KUBECTL) get validatingpolicies
+
+verify-admission: ## Prove Kyverno alone blocks bad pods (namespace without PSA)
+	KUBE_CONTEXT=$(KUBE_CONTEXT) bash scripts/verify-admission.sh
 
 kyverno: ## Install/upgrade Kyverno (admission policy engine) via Helm
 	$(HELM) repo add kyverno https://kyverno.github.io/kyverno/ --force-update >/dev/null

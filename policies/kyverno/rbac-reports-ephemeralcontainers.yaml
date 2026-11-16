@@ -1,0 +1,23 @@
+# Read access to pods/ephemeralcontainers for Kyverno's reports controller.
+#
+# Four policies also match the pods/ephemeralcontainers subresource, so that
+# "kubectl debug" cannot inject a privileged, root or "latest" container into
+# a running pod. Admission works without this role, but Kyverno marks those
+# policies READY=false ("not ready for reporting, missing permissions")
+# because the reports controller cannot read that subresource for background
+# scans.
+#
+# Instead of editing Kyverno's own ClusterRole (the Helm upgrade would revert
+# it), this role carries the aggregation label: Kubernetes merges its rules
+# into "kyverno:reports-controller" automatically. Read-only, one subresource,
+# one controller - nothing broader than the error asked for.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:reports-controller:ephemeralcontainers
+  labels:
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups: [""]
+    resources: ["pods/ephemeralcontainers"]
+    verbs: ["get", "list", "watch"]
