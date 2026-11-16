@@ -1,0 +1,33 @@
+# Layer 2: each Deployment runs as its own ServiceAccount, without a token.
+# automountServiceAccountToken is set on the pod too, not only on the
+# ServiceAccount: the pod-level field wins, so this keeps the token out even
+# if someone later flips the ServiceAccount's setting.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      serviceAccountName: web
+      automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      serviceAccountName: api
+      automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+spec:
+  template:
+    spec:
+      serviceAccountName: db
+      automountServiceAccountToken: false

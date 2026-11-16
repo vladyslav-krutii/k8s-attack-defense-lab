@@ -12,6 +12,8 @@ namespace: demo
 
 resources:
   - ../vulnerable
+  # Layer 2: dedicated ServiceAccounts for api and db.
+  - serviceaccounts.yaml
 
 patches:
   # Undo the scenario 1 misconfiguration (privileged, root, hostPath).
@@ -24,3 +26,11 @@ patches:
   - path: patches/web-security.yaml
   - path: patches/api-security.yaml
   - path: patches/db-security.yaml
+
+  # Undo the scenario 2 misconfiguration (web bound to "edit").
+  - path: patches/undo-02-web-rbac.yaml
+
+  # --- Layer 2: Identity & RBAC --------------------------------------------
+  # No RoleBindings at all: none of the workloads needs the Kubernetes API.
+  - path: patches/web-serviceaccount.yaml
+  - path: patches/identity.yaml
