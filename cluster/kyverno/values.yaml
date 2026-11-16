@@ -18,6 +18,7 @@ config:
     # Trade-off: anything running in these namespaces is unchecked by
     # Kyverno. Write access to them must therefore be tightly controlled by
     # RBAC - an attacker who can create pods in kube-system bypasses policy.
+    # Details and a check command: docs/design-decisions.md
     namespaceSelector:
       matchExpressions:
         - key: kubernetes.io/metadata.name
