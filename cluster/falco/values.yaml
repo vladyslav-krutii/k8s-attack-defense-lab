@@ -1,0 +1,27 @@
+# Helm values for Falco (chart 9.2.2 = Falco 0.45.2).
+# Only what differs from the chart defaults is set here.
+
+driver:
+  # modern_ebpf: a CO-RE eBPF probe compiled into the Falco binary. It needs
+  # kernel >= 5.8 and BTF (/sys/kernel/btf/vmlinux) - both checked on the
+  # kind nodes (they share the WSL2 kernel 6.18). No kernel module to build
+  # or load, nothing downloaded at start-up.
+  kind: modern_ebpf
+  modernEbpf:
+    # Run with only the capabilities the probe needs (CAP_BPF, CAP_PERFMON,
+    # CAP_SYS_RESOURCE, CAP_SYS_PTRACE) instead of a privileged container.
+    # A runtime sensor sees every syscall on the node - it is a juicy
+    # target itself, so it should not be more powerful than necessary.
+    leastPrivileged: true
+
+# Flush every alert line immediately, so "kubectl logs" shows events in real
+# time (useful for the scenario demos; costs a little throughput).
+tty: true
+
+falcoctl:
+  artifact:
+    # Rules are installed once at start-up by the init container, but the
+    # "follow" sidecar that silently pulls rule updates at runtime is off:
+    # detection behaviour should only change through a commit, not on its own.
+    follow:
+      enabled: false

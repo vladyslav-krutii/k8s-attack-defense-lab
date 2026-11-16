@@ -12,6 +12,7 @@ CALICO_URL     := https://raw.githubusercontent.com/projectcalico/calico/$(CALIC
 KUBECTL := kubectl --context $(KUBE_CONTEXT)
 
 KYVERNO_CHART_VERSION := 3.10.0
+FALCO_CHART_VERSION   := 9.2.2
 HELM := helm --kube-context $(KUBE_CONTEXT)
 
 API_IMAGE := k8s-lab/api:0.1.0
@@ -19,7 +20,8 @@ NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
         build load base vulnerable hardened verify-all smoke port-forward undeploy \
-        helm kubectl kyverno-cli kyverno policy-test policies verify-admission reports
+        helm kubectl kyverno-cli kyverno policy-test policies verify-admission reports \
+        falco falco-logs
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -103,6 +105,18 @@ kyverno: ## Install/upgrade Kyverno (admission policy engine) via Helm
 	  --values cluster/kyverno/values.yaml \
 	  --wait --timeout 5m
 	$(KUBECTL) -n kyverno get deploy
+
+falco: ## Install/upgrade Falco (runtime detection, modern eBPF) via Helm
+	$(HELM) repo add falcosecurity https://falcosecurity.github.io/charts --force-update >/dev/null
+	$(HELM) upgrade --install falco falcosecurity/falco \
+	  --version $(FALCO_CHART_VERSION) \
+	  --namespace falco --create-namespace \
+	  --values cluster/falco/values.yaml \
+	  --wait --timeout 10m
+	$(KUBECTL) -n falco get pods -o wide
+
+falco-logs: ## Follow Falco alerts from all nodes (Ctrl+C to stop)
+	$(KUBECTL) -n falco logs -f -l app.kubernetes.io/name=falco -c falco --max-log-requests 5 --prefix
 
 build: ## Build the API image
 	docker build -t $(API_IMAGE) app/api

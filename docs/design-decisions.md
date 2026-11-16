@@ -3,6 +3,32 @@
 Short records of decisions that are not obvious from the manifests alone.
 Each entry: the decision, why, what it costs, and how the cost is covered.
 
+## Falco runs with four capabilities, not privileged
+
+**Decision.** Falco uses the `modern_ebpf` driver in least-privileged mode
+([`cluster/falco/values.yaml`](../cluster/falco/values.yaml)). The container
+gets `CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_RESOURCE` and `CAP_SYS_PTRACE`
+instead of `privileged: true`.
+
+**Why.** A runtime sensor sees every syscall on the node, which makes it an
+attractive target. Compromising a privileged Falco pod means owning the node;
+a capability-limited one is a smaller prize. `modern_ebpf` also needs no
+kernel module, so there is nothing to compile or load into the kernel.
+
+**Cost.** These capabilities are still powerful (`CAP_BPF` and
+`CAP_SYS_PTRACE` especially), and the `falco` namespace has to admit them. It
+carries no `lab/kyverno` label and no Pod Security label, so Kyverno and PSA
+do not apply there, the same situation as the infrastructure namespaces
+below. BPF iterators are disabled because the pod is not in the host PID
+namespace, so Falco builds its initial process table from `/proc`. As a
+result, some fields of processes that started before Falco (for example
+`parent`, `user`) can show `<NA>`.
+
+**How the cost is covered.** The same RBAC rule as below: only cluster
+administrators may create workloads in `falco`. The Helm chart version and
+the rules are pinned (the `falcoctl follow` auto-update sidecar is off), so
+the sensor only changes through a commit.
+
 ## Kyverno webhooks are fail-closed, infrastructure namespaces are excluded
 
 **Decision.** Kyverno's admission webhooks keep the default
