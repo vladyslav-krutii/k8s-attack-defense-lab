@@ -22,3 +22,7 @@ patches:
   - path: patches/01-web-privileged-hostpath.yaml
   # Scenario 2: web uses that service account, token auto-mounted.
   - path: patches/02-web-serviceaccount.yaml
+
+# Scenario 3 is a misconfiguration by ABSENCE: this overlay defines no
+# NetworkPolicy, so every pod can reach every other pod on every port.
+# Nothing to patch - which is exactly why it is so common.
