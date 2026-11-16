@@ -1,0 +1,18 @@
+# VULNERABLE overlay: the base app plus realistic misconfigurations.
+# Every patch here is something seen in real clusters, usually added
+# "temporarily" to make something work. Each one maps to a scenario in
+# scenarios/0N-*/ and is undone by the hardened overlay.
+#
+# LOCAL LAB ONLY. Never apply this to a shared or real cluster.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: demo
+
+resources:
+  - ../../base
+
+patches:
+  # Pod Security Admission: nothing enforced, but warn/audit at "restricted"
+  # so "kubectl apply" prints what the hardened overlay will have to fix.
+  - path: namespace-psa.yaml

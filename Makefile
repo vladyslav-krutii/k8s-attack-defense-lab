@@ -15,10 +15,10 @@ API_IMAGE := k8s-lab/api:0.1.0
 NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
-        build load base smoke port-forward undeploy
+        build load base vulnerable smoke port-forward undeploy
 
 help: ## Show available targets
-	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 tools: ## Check that required tools are installed
 	@for t in docker kind kubectl; do \
@@ -64,6 +64,20 @@ base: load ## Deploy the plain base app (no misconfigs, no defenses)
 	$(KUBECTL) apply -k k8s/base
 	$(KUBECTL) -n $(NAMESPACE) rollout status deploy/db deploy/api deploy/web --timeout=180s
 
+# Each overlay is deployed into a FRESH namespace. "kubectl apply" never deletes
+# objects that disappeared from the manifests, so switching overlays in place
+# would leave e.g. a vulnerable RoleBinding behind (or a hardened
+# NetworkPolicy), and the scenario results would lie.
+vulnerable: load undeploy ## Deploy the VULNERABLE overlay (clean namespace)
+	$(KUBECTL) apply -k k8s/overlays/vulnerable
+	$(KUBECTL) -n $(NAMESPACE) rollout status deploy/db deploy/api deploy/web --timeout=180s
+
+scenario-%: ## Run attack demo N, e.g. make scenario-1
+	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scenarios/0$*-*/run.sh
+
+verify-%: ## Check scenario N: exit 0 exploitable, 1 blocked, 2 inconclusive
+	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scenarios/0$*-*/verify.sh
+
 smoke: ## End-to-end check: web -> api -> db
 	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scripts/smoke.sh
 
@@ -71,7 +85,7 @@ port-forward: ## Open the app at http://localhost:8080 (Ctrl+C to stop)
 	$(KUBECTL) -n $(NAMESPACE) port-forward svc/web 8080:8080
 
 undeploy: ## Remove the app (deleting the namespace removes everything in it)
-	$(KUBECTL) delete namespace $(NAMESPACE) --ignore-not-found
+	$(KUBECTL) delete namespace $(NAMESPACE) --ignore-not-found --wait=true
 
 cluster-delete: ## Delete the kind cluster
 	kind delete cluster --name $(CLUSTER_NAME)

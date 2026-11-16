@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    # Scripts read this label to report which overlay is deployed.
+    lab/overlay: vulnerable
+    # enforce=privileged: the API server admits ANY pod, including privileged
+    # ones with hostPath mounts. This is also what you get with no label at
+    # all, unless the cluster sets a stricter default - so this is the
+    # real-world default, written out explicitly.
+    pod-security.kubernetes.io/enforce: privileged
+    # warn/audit=restricted: pods are still admitted, but the API server
+    # returns warnings to kubectl and writes audit annotations. A cheap way
+    # to measure how far a namespace is from "restricted" before enforcing.
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
