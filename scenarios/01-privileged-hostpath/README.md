@@ -86,13 +86,21 @@ make scenario-1
 make verify-1
 ```
 
-`verify.sh` compares `/host/etc/hostname` inside the container with the
-pod's `spec.nodeName`. A pod's own `/etc/hostname` is the pod name, so a match
-can only come from the node's filesystem.
+`verify.sh` runs two checks:
+
+1. **Current state.** It compares `/host/etc/hostname` inside the container
+   with the pod's `spec.nodeName`. A pod's own `/etc/hostname` is the pod
+   name, so a match can only come from the node's filesystem.
+2. **Guardrail.** It sends a privileged pod with a `hostPath: /` volume using
+   `kubectl apply --dry-run=server`. The request goes through every admission
+   check (Pod Security Admission now, Kyverno from Phase 4), but nothing is
+   stored or run. Removing the bad patch is not enough on its own: if the
+   namespace still admits such a pod, anyone with `create pods` (see
+   scenario 2) or a careless deploy brings the escape back.
 
 | Exit code | Meaning |
 |---|---|
-| 0 | EXPLOITABLE: the web container reads the node's filesystem |
+| 0 | EXPLOITABLE: the web container reads the node's filesystem, or admission would accept a privileged hostPath pod |
 | 1 | BLOCKED |
 | 2 | INCONCLUSIVE: the test could not run |
 

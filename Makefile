@@ -15,7 +15,7 @@ API_IMAGE := k8s-lab/api:0.1.0
 NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
-        build load base vulnerable smoke port-forward undeploy
+        build load base vulnerable hardened verify-all smoke port-forward undeploy
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -72,11 +72,18 @@ vulnerable: load undeploy ## Deploy the VULNERABLE overlay (clean namespace)
 	$(KUBECTL) apply -k k8s/overlays/vulnerable
 	$(KUBECTL) -n $(NAMESPACE) rollout status deploy/db deploy/api deploy/web --timeout=180s
 
+hardened: load undeploy ## Deploy the HARDENED overlay (clean namespace)
+	$(KUBECTL) apply -k k8s/overlays/hardened
+	$(KUBECTL) -n $(NAMESPACE) rollout status deploy/db deploy/api deploy/web --timeout=180s
+
 scenario-%: ## Run attack demo N, e.g. make scenario-1
 	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scenarios/0$*-*/run.sh
 
 verify-%: ## Check scenario N: exit 0 exploitable, 1 blocked, 2 inconclusive
 	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scenarios/0$*-*/verify.sh
+
+verify-all: ## Table of all scenario results for the deployed overlay
+	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scripts/verify-all.sh
 
 smoke: ## End-to-end check: web -> api -> db
 	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scripts/smoke.sh
