@@ -11,11 +11,15 @@ CALICO_URL     := https://raw.githubusercontent.com/projectcalico/calico/$(CALIC
 # hit another cluster that happens to be the current context.
 KUBECTL := kubectl --context $(KUBE_CONTEXT)
 
+KYVERNO_CHART_VERSION := 3.10.0
+HELM := helm --kube-context $(KUBE_CONTEXT)
+
 API_IMAGE := k8s-lab/api:0.1.0
 NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
-        build load base vulnerable hardened verify-all smoke port-forward undeploy
+        build load base vulnerable hardened verify-all smoke port-forward undeploy \
+        helm kyverno
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -53,6 +57,20 @@ status: ## Show nodes, Calico status and system pods
 	$(KUBECTL) get nodes -o wide
 	$(KUBECTL) get tigerastatus
 	$(KUBECTL) get pods -A
+
+helm: ## Install pinned Helm into ~/.local/bin (checksum-verified)
+	bash scripts/install-helm.sh
+
+kyverno: ## Install/upgrade Kyverno (admission policy engine) via Helm
+	$(HELM) repo add kyverno https://kyverno.github.io/kyverno/ --force-update >/dev/null
+	@# upgrade --install: the same command installs or upgrades (idempotent).
+	@# --version pins the chart; without it Helm takes whatever is newest.
+	$(HELM) upgrade --install kyverno kyverno/kyverno \
+	  --version $(KYVERNO_CHART_VERSION) \
+	  --namespace kyverno --create-namespace \
+	  --values cluster/kyverno/values.yaml \
+	  --wait --timeout 5m
+	$(KUBECTL) -n kyverno get deploy
 
 build: ## Build the API image
 	docker build -t $(API_IMAGE) app/api

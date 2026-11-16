@@ -1,0 +1,33 @@
+# Helm values for Kyverno (chart 3.10.0 = Kyverno v1.20.0).
+# Only what differs from the chart defaults is set here.
+
+config:
+  webhooks:
+    # Kyverno's admission webhooks are FAIL-CLOSED by default: if Kyverno is
+    # down, the API server rejects matching requests instead of skipping the
+    # check. That is the secure choice, but with one replica (this lab) a
+    # Kyverno outage would also block the pods the cluster needs to recover.
+    # Calico's pods are a real deadlock risk: Kyverno needs pod networking to
+    # start, and pod networking needs calico-node.
+    #
+    # So cluster infrastructure namespaces never reach the webhook at all.
+    # The chart already excludes kube-system and Kyverno's own namespace
+    # (excludeKyvernoNamespace: true); this list replaces the default, so
+    # kube-system must be repeated.
+    #
+    # Trade-off: anything running in these namespaces is unchecked by
+    # Kyverno. Write access to them must therefore be tightly controlled by
+    # RBAC - an attacker who can create pods in kube-system bypasses policy.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - calico-system
+            - tigera-operator
+            - local-path-storage
+
+# Replicas are left at the chart default (1 per controller). Production uses
+# at least 3 admission controller replicas so a single pod restart does not
+# turn fail-closed into "cluster rejects everything".
