@@ -19,7 +19,7 @@ NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
         build load base vulnerable hardened verify-all smoke port-forward undeploy \
-        helm kubectl kyverno-cli kyverno policy-test policies verify-admission
+        helm kubectl kyverno-cli kyverno policy-test policies verify-admission reports
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -86,6 +86,9 @@ policies: ## Apply Kyverno policies (audit + enforce variants, chosen by ns labe
 	$(KUBECTL) wait validatingpolicy --all --timeout=90s \
 	  --for=jsonpath='{.status.conditionStatus.ready}'=true
 	$(KUBECTL) get validatingpolicies
+
+reports: ## Wait for Kyverno PolicyReports in demo and summarize them (async!)
+	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scripts/policy-reports.sh
 
 verify-admission: ## Prove Kyverno alone blocks bad pods (namespace without PSA)
 	KUBE_CONTEXT=$(KUBE_CONTEXT) bash scripts/verify-admission.sh
