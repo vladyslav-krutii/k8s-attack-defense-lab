@@ -21,7 +21,7 @@ NAMESPACE := demo
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
         build load base vulnerable hardened verify-all smoke port-forward undeploy \
         helm kubectl kyverno-cli kyverno policy-test policies verify-admission reports \
-        falco falco-logs
+        falco falco-logs verify-detection
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -121,6 +121,9 @@ falco: ## Install/upgrade Falco (runtime detection, modern eBPF) via Helm
 	  echo "falco securityContext: $$sc"; \
 	  case "$$sc" in *'"privileged":true'*) echo "ERROR: Falco runs privileged" >&2; exit 1;; esac
 	$(KUBECTL) -n falco get pods -o wide
+
+verify-detection: ## Trigger scenarios 1-3 and check the custom Falco rules fire (or stay silent)
+	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scripts/verify-detection.sh
 
 falco-logs: ## Follow Falco alerts from all nodes (Ctrl+C to stop)
 	$(KUBECTL) -n falco logs -f -l app.kubernetes.io/name=falco -c falco --max-log-requests 5 --prefix
