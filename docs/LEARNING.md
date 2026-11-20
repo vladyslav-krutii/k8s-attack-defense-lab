@@ -173,3 +173,33 @@ make cluster && make kyverno && make policies && make falco && make hardened && 
 - Що робити, коли Helm-чарт не дає налаштувати потрібне (values override,
   post-renderer, fork) і які компроміси в кожного варіанту?
 - Як автоматично ловити регресію «сенсор раптом став privileged»?
+
+## Phase 4, крок 4b — три власні правила Falco
+
+**Що.** `detection/falco/lab-rules.yaml`, завантажується через `customRules`
+чарту:
+1. **Shell без TTY** у поді застосунку: батько — runtime (скриптовий
+   `kubectl exec ... -- sh -c`) або сам процес застосунку (nginx/node/postgres
+   = RCE). Стандартне правило Falco ловить лише shell *з* терміналом.
+2. **Читання облікових даних Kubernetes**: токен SA у namespace застосунку,
+   kubelet PKI, каталог подів kubelet і токени інших подів через hostPath.
+3. **Неочікуване вихідне з'єднання з web**: усе, крім ClusterIP на порт 3000
+   (api) і 53 (DNS), тобто той самий allow-list, що й NetworkPolicy.
+
+Виключення названі явно: runc під час старту контейнера, `initdb` Postgres
+(`sh -c locale -a`), PID 1 entrypoint, loopback-трюк резолвера musl,
+інфраструктурні namespace (сам Falco, Calico, Kyverno).
+
+**Головна пастка.** Спочатку правило 3 мовчало для web → API server. Причина:
+`rule_matching: first`. Стандартне правило «Unexpected connection to K8s API
+Server» завантажується раніше, спрацьовує першим, і далі Falco подію не
+перевіряє. Рішення: `rule_matching: all` (коштує трохи CPU).
+
+**Навіщо.** Правило детекції, яке ніхто не перевіряв на реальній атаці, — це
+лише припущення. Вузькі правила з явними виключеннями дають мало шуму, тож на
+алерти реагують, а не ігнорують їх.
+
+**Питання.**
+- Як відрізнити `kubectl exec` від RCE у застосунку на рівні syscall?
+- Чому стандартний макрос `outbound` марний усередині кластера (RFC 1918)?
+- Що може «затінити» (shadow) правило в Falco і як це виявити?

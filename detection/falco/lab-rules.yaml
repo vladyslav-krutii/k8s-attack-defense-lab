@@ -1,0 +1,192 @@
+# Custom Falco rules for the lab (Falco 0.45, loaded after the stock
+# falco_rules.yaml, so its macros and lists - spawned_process, container,
+# shell_procs, container_entrypoint, never_true - are available here).
+#
+# Installed by "make falco" through the chart's customRules value, which
+# mounts this file into /etc/falco/rules.d/.
+#
+# Design rules for all three:
+# - Narrow scope. Each rule names the pods it watches and the exceptions it
+#   knows about, instead of watching everything and drowning in noise.
+# - Only pods. Every condition requires Kubernetes metadata (k8s.ns.name),
+#   so processes on the kind node itself (kubelet, containerd) never match.
+# - Never key on user.name or proc.pname alone: in least-privileged mode
+#   Falco cannot walk the host process tree, so these can be <NA>.
+# - Alert output must not leak secrets: only the shell rule prints a full
+#   command line (see its comment).
+
+# ---------------------------------------------------------------------------
+# Scope
+# ---------------------------------------------------------------------------
+
+# Application namespaces: nothing here needs the Kubernetes API or shells.
+- list: lab_app_namespaces
+  items: [demo]
+
+# Infrastructure namespaces (the sensor itself, CNI, policy engine, DNS).
+# Their pods legitimately read service account tokens and run exec probes.
+- list: lab_infra_namespaces
+  items: [falco, kube-system, calico-system, calico-apiserver, tigera-operator, kyverno, local-path-storage]
+
+- macro: lab_pod
+  condition: (container and k8s.ns.name exists and k8s.ns.name != "")
+
+# Container runtime helpers run inside the container's namespaces while it
+# starts (runc opens the service account mount point, cgroup files, ...).
+- macro: lab_runtime_init
+  condition: (proc.name startswith "runc")
+
+# ---------------------------------------------------------------------------
+# Rule 1: shell without a terminal
+# ---------------------------------------------------------------------------
+
+# Long-running server processes of the demo app. A shell started by one of
+# them means command injection / RCE in the app (nginx, Node, Postgres).
+- list: lab_app_server_binaries
+  items: [nginx, node, postgres]
+
+# Known init: on the first start, the postgres entrypoint runs initdb, which
+# starts "postgres --single", which runs "sh -c locale -a". initdb and pg_ctl
+# also spawn shells, but they are not in lab_app_server_binaries anyway.
+- macro: lab_postgres_initdb_shell
+  condition: (proc.pname = postgres and proc.pcmdline startswith "postgres --single")
+
+# Extension point for known, reviewed shells (e.g. an exec probe that uses
+# "sh -c"). None today: the only exec probe in the lab is pg_isready.
+- macro: user_known_lab_shell_without_tty
+  condition: (never_true)
+
+# Why: the stock rule "Terminal shell in container" requires proc.tty != 0.
+# An attacker with RCE in a web app, or with pods/exec rights used from a
+# script ("kubectl exec deploy/web -- sh -c id", no -it), gets no terminal.
+#
+# Two ways in:
+# - container_entrypoint: the shell's parent is the runtime (runc /
+#   containerd-shim) = someone used the exec API;
+# - lab_app_server_binaries: the app process itself spawned a shell = RCE.
+# proc.vpid != 1 skips the container's own entrypoint script (e.g.
+# docker-entrypoint.sh), which is a shell started by the runtime as PID 1.
+#
+# Trade-off: the output includes proc.cmdline, because the command is the
+# evidence. A command line can contain secrets (a token passed as an
+# argument), and Falco logs are usually readable by more people than
+# Secrets are - so access to the Falco logs must be restricted too.
+- rule: Lab Shell Spawned Without Terminal
+  desc: >
+    A shell started in an application pod without a terminal, either through
+    the exec API (scripted kubectl exec) or by the application process itself
+    (command injection). Interactive exec is covered by the stock rule.
+  condition: >
+    spawned_process and lab_pod and shell_procs
+    and proc.tty = 0
+    and proc.vpid != 1
+    and not k8s.ns.name in (lab_infra_namespaces)
+    and (container_entrypoint or proc.pname in (lab_app_server_binaries))
+    and not lab_postgres_initdb_shell
+    and not user_known_lab_shell_without_tty
+  output: >
+    Shell spawned without a terminal in a pod
+    (shell=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository)
+  priority: WARNING
+  tags: [lab, container, shell, mitre_execution, T1059]
+
+# ---------------------------------------------------------------------------
+# Rule 2: reading Kubernetes credentials
+# ---------------------------------------------------------------------------
+
+# Successful open for reading, of a file or a directory listing.
+- macro: lab_open_read_ok
+  condition: >
+    (evt.type in (open, openat, openat2) and evt.is_open_read=true
+     and fd.num >= 0 and fd.typechar in ('f', 'd'))
+
+# The pod's own service account token (both paths: /var/run -> /run).
+# Matches ".../serviceaccount/token" and ".../serviceaccount/..<ts>/token".
+- macro: lab_sa_token_file
+  condition: >
+    ((fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/
+      or fd.name startswith /run/secrets/kubernetes.io/serviceaccount/)
+     and fd.filename = token)
+
+# Node credentials seen through a hostPath mount (any mount prefix, e.g.
+# /host/var/lib/kubelet/...): the kubelet's client certificates and keys,
+# the list of pod directories (each holds that pod's token), and token
+# files of other pods.
+- macro: lab_node_credentials
+  condition: >
+    (fd.name contains /var/lib/kubelet/pki
+     or fd.name endswith /var/lib/kubelet/pods
+     or (fd.name contains /var/lib/kubelet/pods/ and fd.filename = token))
+
+# Why: a stolen token or kubelet key is how a container escape turns into
+# cluster access (scenario 2: the token reads Secrets; scenario 1: hostPath
+# exposes the kubelet's identity and every pod's token on the node).
+#
+# The pod's own token is only suspicious in application namespaces: client
+# libraries in infra pods (Calico, Kyverno, CoreDNS) read it all the time.
+# Node credentials are suspicious in every pod. The kubelet itself also
+# reads them, but it is not a pod, so lab_pod excludes it.
+- rule: Lab Read Of Kubernetes Credentials
+  desc: >
+    A process in a pod read a service account token (application namespaces
+    only) or the node's kubelet credentials / other pods' tokens through a
+    hostPath mount.
+  condition: >
+    lab_open_read_ok and lab_pod and not lab_runtime_init
+    and not k8s.ns.name in (lab_infra_namespaces)
+    and ((lab_sa_token_file and k8s.ns.name in (lab_app_namespaces))
+         or lab_node_credentials)
+  output: >
+    Kubernetes credentials read in a pod
+    (file=%fd.name process=%proc.name exe=%proc.exepath
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository)
+  priority: ERROR
+  tags: [lab, container, credentials, mitre_credential_access, T1528, T1552.001]
+
+# ---------------------------------------------------------------------------
+# Rule 3: unexpected outbound connection from web
+# ---------------------------------------------------------------------------
+
+# The only destinations web needs (same as its NetworkPolicy in the hardened
+# overlay): the api Service on 3000 and cluster DNS on 53, both ClusterIPs.
+# kind's default Service CIDR is 10.96.0.0/16. Falco sees the address the
+# process passed to connect() - the ClusterIP, before kube-proxy's DNAT.
+- list: lab_web_allowed_ports
+  items: [3000, 53]
+
+- macro: lab_web_allowed_destination
+  condition: (fd.sport in (lab_web_allowed_ports) and fd.snet = "10.96.0.0/16")
+
+# Why: the web tier only talks to api. A connection anywhere else (the
+# database directly, the Kubernetes API with a stolen token, the internet)
+# means someone is using web as a foothold - scenarios 3 and 2.
+#
+# Only connections that succeeded or are in progress (non-blocking connect)
+# count, like the stock "outbound" macro. The stock macro cannot be reused:
+# it ignores all RFC 1918 destinations, i.e. everything inside the cluster.
+# Loopback is ignored: musl's resolver connects a UDP socket to 127.0.0.1 /
+# ::1 to pick a source address, which is not real traffic.
+#
+# Trade-off: the allow-list is port + Service CIDR, not "the api Service"
+# itself, so any ClusterIP on port 3000 or 53 is allowed. Falco has no
+# Service name for an IP without extra components (k8s-metacollector).
+- rule: Lab Unexpected Outbound Connection From Web
+  desc: >
+    The web pod opened a network connection to something other than the api
+    Service (port 3000) or cluster DNS (port 53).
+  condition: >
+    evt.type = connect and (fd.typechar = 4 or fd.typechar = 6)
+    and (evt.rawres >= 0 or evt.res = EINPROGRESS)
+    and lab_pod and k8s.ns.name in (lab_app_namespaces)
+    and k8s.pod.label[app] = web
+    and not fd.snet = "127.0.0.0/8" and not fd.sip = "::1"
+    and not lab_web_allowed_destination
+  output: >
+    Unexpected outbound connection from web
+    (connection=%fd.name l4=%fd.l4proto process=%proc.name exe=%proc.exepath
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name)
+  priority: WARNING
+  tags: [lab, container, network, mitre_lateral_movement, T1046]

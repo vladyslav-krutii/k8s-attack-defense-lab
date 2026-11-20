@@ -33,6 +33,16 @@ containerSecurityContext:
   capabilities:
     add: [BPF, SYS_RESOURCE, PERFMON, SYS_PTRACE]
 
+falco:
+  # Default "first": once one rule matches an event, later rules are not
+  # evaluated for it. The stock rule "Unexpected connection to K8s API Server
+  # from container" is loaded before our rules.d/ file, so it shadowed the
+  # lab rule for web -> API server (scenario 2) and only the stock alert
+  # appeared. "all" evaluates every rule (an event can raise two alerts).
+  # Trade-off: incubating option, more CPU per event - fine for this lab,
+  # load-test it before production.
+  rule_matching: all
+
 # Flush every alert line immediately, so "kubectl logs" shows events in real
 # time (useful for the scenario demos; costs a little throughput).
 tty: true

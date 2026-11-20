@@ -112,6 +112,7 @@ falco: ## Install/upgrade Falco (runtime detection, modern eBPF) via Helm
 	  --version $(FALCO_CHART_VERSION) \
 	  --namespace falco --create-namespace \
 	  --values cluster/falco/values.yaml \
+	  --set-file 'customRules.lab-rules\.yaml=detection/falco/lab-rules.yaml' \
 	  --wait --timeout 10m
 	@# Guard: leastPrivileged is false in values, so an empty
 	@# containerSecurityContext would silently make Falco privileged.
