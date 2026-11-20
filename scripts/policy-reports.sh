@@ -6,29 +6,52 @@
 # policy evaluation); the reports controller then aggregates them into one
 # PolicyReport per resource, typically 10-15 s later in this lab. Reading
 # right after "make vulnerable" therefore shows "No resources found".
-# Background scans (every 1h by default) refresh the reports afterwards.
 #
-# Done = at least one PolicyReport exists AND no EphemeralReports are left
-# waiting for aggregation.
+# Second wave: results of Deny (enforce) policies are not written at
+# admission at all. The background controller scans every new resource
+# shortly after it appears (seconds to about a minute here) and adds them -
+# PASS results of enforce policies show up only then, with
+# properties.process = "background scan". (A resource that FAILS an enforce
+# policy never exists, so there is nothing to report.) The 1h
+# --backgroundScanInterval is only the re-scan of unchanged resources.
+#
+# Done = every Deployment, ReplicaSet and Pod has a PolicyReport, no
+# EphemeralReports are pending, and every PolicyReport has a result for each
+# policy that selects this namespace (by its lab/kyverno label).
 set -uo pipefail
 
 NS=${NAMESPACE:-demo}
-TIMEOUT=${TIMEOUT:-90}
+TIMEOUT=${TIMEOUT:-180}
 kubectl() { command kubectl --context "${KUBE_CONTEXT:-kind-k8s-lab}" "$@"; }
 
 count() { kubectl -n "$NS" get "$1" -o name 2>/dev/null | wc -l; }
 
-echo "==> Waiting up to ${TIMEOUT}s for Kyverno PolicyReports in '$NS'"
+# Policies whose namespaceSelector lists this namespace's lab/kyverno value.
+mode=$(kubectl get namespace "$NS" -o jsonpath='{.metadata.labels.lab/kyverno}')
+expected=$(kubectl get validatingpolicies \
+  -o jsonpath='{range .items[*]}{.spec.matchConstraints.namespaceSelector.matchExpressions[*].values}{"\n"}{end}' \
+  | grep -c "\"${mode:-none}\"")
+
+# Fewest results in any PolicyReport (0 if there are none yet).
+min_results() {
+  kubectl -n "$NS" get policyreports \
+    -o jsonpath='{range .items[*]}{.summary.pass}{" "}{.summary.fail}{" "}{.summary.warn}{" "}{.summary.error}{" "}{.summary.skip}{"\n"}{end}' 2>/dev/null \
+    | awk 'BEGIN{m=-1} {t=$1+$2+$3+$4+$5; if (m<0 || t<m) m=t} END{print (m<0 ? 0 : m)}'
+}
+
+echo "==> Waiting up to ${TIMEOUT}s for Kyverno PolicyReports in '$NS' (lab/kyverno=${mode:-none}: $expected policies per resource)"
 start=$(date +%s)
 while :; do
-  pr=$(count policyreports); er=$(count ephemeralreports)
+  pr=$(count policyreports); er=$(count ephemeralreports); min=$(min_results)
+  workloads=$(kubectl -n "$NS" get deployments,replicasets,pods -o name 2>/dev/null | wc -l)
   elapsed=$(( $(date +%s) - start ))
-  if [ "$pr" -gt 0 ] && [ "$er" -eq 0 ]; then
-    echo "    ready after ${elapsed}s: $pr PolicyReports, 0 pending EphemeralReports"
+  if [ "$expected" -gt 0 ] && [ "$pr" -gt 0 ] && [ "$pr" -ge "$workloads" ] \
+     && [ "$er" -eq 0 ] && [ "$min" -ge "$expected" ]; then
+    echo "    ready after ${elapsed}s: $pr PolicyReports, each with >= $expected results"
     break
   fi
   if [ "$elapsed" -ge "$TIMEOUT" ]; then
-    echo "    TIMEOUT: $pr PolicyReports, $er EphemeralReports still pending"
+    echo "    TIMEOUT: $pr PolicyReports for $workloads workloads (fewest results: $min of $expected), $er EphemeralReports pending"
     echo "    Is the namespace labelled lab/kyverno? Are the policies READY (make policies)?"
     exit 1
   fi
