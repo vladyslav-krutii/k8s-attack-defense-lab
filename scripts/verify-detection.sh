@@ -13,8 +13,10 @@
 #      rule                       vulnerable   hardened
 #      1 shell without terminal   fires        fires (*)
 #      2 credentials read         fires        silent: no token, no hostPath
-#      3 unexpected outbound      fires        silent: NetworkPolicy drops it,
-#                                              connect() never succeeds
+#      3 unexpected outbound      fires        silent: NetworkPolicy drops
+#                                              nc's blocking connect (times
+#                                              out); scenario 2 stops before
+#                                              curl (no token)
 #
 #    (*) Pod hardening does not take away an admin's pods/exec right or the
 #    shell in the nginx image, so the exec'd shell still runs - and should

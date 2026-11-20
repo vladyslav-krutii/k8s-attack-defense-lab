@@ -164,21 +164,36 @@
 # database directly, the Kubernetes API with a stolen token, the internet)
 # means someone is using web as a foothold - scenarios 3 and 2.
 #
-# Only connections that succeeded or are in progress (non-blocking connect)
+# Only TCP connects that succeeded or are in progress (non-blocking connect)
 # count, like the stock "outbound" macro. The stock macro cannot be reused:
 # it ignores all RFC 1918 destinations, i.e. everything inside the cluster.
-# Loopback is ignored: musl's resolver connects a UDP socket to 127.0.0.1 /
-# ::1 to pick a source address, which is not real traffic.
 #
-# Trade-off: the allow-list is port + Service CIDR, not "the api Service"
-# itself, so any ClusterIP on port 3000 or 53 is allowed. Falco has no
-# Service name for an IP without extra components (k8s-metacollector).
+# Why TCP only: connect() on a UDP socket sends no packet. musl's
+# getaddrinfo() does exactly that for every resolved address (RFC 6724
+# address sorting: connect a UDP socket to learn the source address), so
+# "curl https://kubernetes.default.svc" produced a UDP "connection" to
+# 10.96.0.1:443 right before the real TCP one - a duplicate alert with a
+# misleading l4=udp. Loopback (e.g. the smoke test's wget to 127.0.0.1:8080)
+# is ignored too.
+#
+# Trade-offs:
+# - UDP egress (e.g. exfiltration over a non-DNS port) is not covered here;
+#   the default-deny egress NetworkPolicy is the control for it.
+# - A non-blocking client (curl, Node) returns EINPROGRESS before the packet
+#   is dropped, so an attempt that the NetworkPolicy blocks still alerts.
+#   That is deliberate: a blocked attempt from web is still a sign of
+#   compromise. Blocking clients like busybox nc fail with a timeout and do
+#   not alert.
+# - The allow-list is port + Service CIDR, not "the api Service" itself, so
+#   any ClusterIP on port 3000 or 53 is allowed. Falco has no Service name
+#   for an IP without extra components (k8s-metacollector).
 - rule: Lab Unexpected Outbound Connection From Web
   desc: >
-    The web pod opened a network connection to something other than the api
+    The web pod opened a TCP connection to something other than the api
     Service (port 3000) or cluster DNS (port 53).
   condition: >
     evt.type = connect and (fd.typechar = 4 or fd.typechar = 6)
+    and fd.l4proto = tcp
     and (evt.rawres >= 0 or evt.res = EINPROGRESS)
     and lab_pod and k8s.ns.name in (lab_app_namespaces)
     and k8s.pod.label[app] = web
