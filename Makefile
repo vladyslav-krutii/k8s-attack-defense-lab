@@ -113,6 +113,12 @@ falco: ## Install/upgrade Falco (runtime detection, modern eBPF) via Helm
 	  --namespace falco --create-namespace \
 	  --values cluster/falco/values.yaml \
 	  --wait --timeout 10m
+	@# Guard: leastPrivileged is false in values, so an empty
+	@# containerSecurityContext would silently make Falco privileged.
+	@sc=$$($(KUBECTL) -n falco get ds falco \
+	  -o jsonpath='{.spec.template.spec.containers[?(@.name=="falco")].securityContext}'); \
+	  echo "falco securityContext: $$sc"; \
+	  case "$$sc" in *'"privileged":true'*) echo "ERROR: Falco runs privileged" >&2; exit 1;; esac
 	$(KUBECTL) -n falco get pods -o wide
 
 falco-logs: ## Follow Falco alerts from all nodes (Ctrl+C to stop)

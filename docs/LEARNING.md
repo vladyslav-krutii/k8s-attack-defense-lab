@@ -152,3 +152,24 @@ make cluster && make kyverno && make policies && make falco && make hardened && 
 - Які кроки в цьому ланцюжку не ідемпотентні, і як `make` це обходить?
 - Що в кластері *не* описано кодом (наприклад, стан БД) і чому це нормально
   для лабораторії?
+
+## Phase 4, крок 4a — прибрали застарілу AppArmor-анотацію Falco
+
+**Що.** Чарт Falco 9.2.2 при `leastPrivileged: true` додає анотацію
+`container.apparmor.security.beta.kubernetes.io/falco`, застарілу з K8s 1.30
+(попередження при кожному встановленні). Перемикача в чарті немає. Тому
+`leastPrivileged: false`, а той самий мінімальний контекст задано вручну в
+`containerSecurityContext` (має пріоритет над тим, що генерує чарт):
+`appArmorProfile: Unconfined` + чотири capabilities. `make falco` після
+встановлення перевіряє, що Falco **не** став privileged.
+
+**Навіщо.** Попередження, які всі звикли ігнорувати, ховають справжні. А
+прапорець з назвою «false» поруч зі словом «least privileged» — пастка: якщо
+хтось видалить блок `containerSecurityContext`, чарт тихо поверне
+`privileged: true`. Звідси guard у Makefile замість надії на коментар.
+
+**Питання.**
+- Чим відрізняється анотація AppArmor від поля `securityContext.appArmorProfile`?
+- Що робити, коли Helm-чарт не дає налаштувати потрібне (values override,
+  post-renderer, fork) і які компроміси в кожного варіанту?
+- Як автоматично ловити регресію «сенсор раптом став privileged»?

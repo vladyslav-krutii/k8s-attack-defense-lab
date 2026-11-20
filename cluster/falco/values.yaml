@@ -8,11 +8,30 @@ driver:
   # or load, nothing downloaded at start-up.
   kind: modern_ebpf
   modernEbpf:
-    # Run with only the capabilities the probe needs (CAP_BPF, CAP_PERFMON,
-    # CAP_SYS_RESOURCE, CAP_SYS_PTRACE) instead of a privileged container.
-    # A runtime sensor sees every syscall on the node - it is a juicy
-    # target itself, so it should not be more powerful than necessary.
-    leastPrivileged: true
+    # Deliberately false, but Falco is still NOT privileged: the security
+    # context is set explicitly in containerSecurityContext below, which
+    # takes precedence over everything the chart would generate.
+    #
+    # Why not "leastPrivileged: true"? In chart 9.2.2 it also adds the
+    # annotation container.apparmor.security.beta.kubernetes.io/falco, which
+    # Kubernetes deprecated in 1.30 (warning on every install). The chart has
+    # no switch for it, so we write the same least-privileged context
+    # ourselves, with the securityContext.appArmorProfile field instead.
+    leastPrivileged: false
+
+# Least privilege by hand: only the capabilities the modern eBPF probe needs
+# (CAP_BPF, CAP_PERFMON, CAP_SYS_RESOURCE, CAP_SYS_PTRACE), no "privileged".
+# A runtime sensor sees every syscall on the node - it is a juicy target
+# itself, so it should not be more powerful than necessary.
+# Do not empty this block: with leastPrivileged=false the chart would fall
+# back to privileged: true. "make falco" checks that it did not.
+containerSecurityContext:
+  # Same as the chart's annotation: the default container AppArmor profile
+  # would block the bpf() calls.
+  appArmorProfile:
+    type: Unconfined
+  capabilities:
+    add: [BPF, SYS_RESOURCE, PERFMON, SYS_PTRACE]
 
 # Flush every alert line immediately, so "kubectl logs" shows events in real
 # time (useful for the scenario demos; costs a little throughput).
