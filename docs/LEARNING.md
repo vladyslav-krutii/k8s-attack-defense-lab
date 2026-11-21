@@ -371,3 +371,26 @@ Secret, а env-змінна фіксується на старті процес�
 - Чому `secretKeyRef` у env гірший за volume, якщо джерело те саме?
 - Чому `view` не дає доступу до Secrets, і як ConfigMap це обходить?
 - Що реально захищає `defaultMode: 0440` і чого не захищає?
+
+## Phase 5 — Kyverno для сценарію 4
+
+**Що.** Дві нові `ValidatingPolicy` (audit у vulnerable, enforce у hardened):
+- `disallow-secrets-in-env`: заборонені літеральні значення для імен, схожих
+  на креденшели (`PASSWORD`, `TOKEN`, `API_KEY`…), `secretKeyRef` і
+  `envFrom.secretRef`. Імена на `_FILE` дозволені — там шлях, а не секрет.
+- `disallow-secrets-in-configmaps`: ключі ConfigMap, схожі на креденшели.
+
+Тести в окремій теці `policies/kyverno/tests/secrets/` (`make policy-test`
+тепер 93/93). `verify-admission` отримав чотири нові кейси, серед них
+контрольний `PGPASSWORD_FILE`, який має пройти.
+
+**Навіщо.** Фікс у маніфестах захищає лише до наступного коміту; політика
+не дає повернути помилку. Компроміс: `secretKeyRef` є майже в кожному
+публічному Helm-чарті, тож у реальному кластері це почалося б з Audit і
+винятків. Перевірка ConfigMap дивиться лише на імена ключів: пароль у
+`DATABASE_URL` пройде — це робота сканерів секретів у CI (gitleaks).
+
+**Питання.**
+- Чому тест політики має й «good» фікстури, а не лише «bad»?
+- Чому виняток саме для `*_FILE`, і як його можна зловживати?
+- Чим admission-перевірка доповнює secret-сканер у CI і навпаки?

@@ -55,6 +55,9 @@ $([ "$hostpath" = yes ] && printf '      volumeMounts:\n        - {name: host, m
 EOF
 }
 
+# The compliant pod plus one env entry (flow-style YAML) in its container.
+pod_env() { pod "$1" | awk -v e="$2" '{print} /command:/ {print "      env:"; print "        - " e}'; }
+
 failures=0
 # check <expect: ADMITTED|DENIED> <description> < manifest
 check() {
@@ -85,6 +88,13 @@ pod latest false no busybox:latest            | check DENIED   "image tag 'lates
 pod notag false no busybox                    | check DENIED   "no image tag only"
 pod root false no busybox:1.37 false          | check DENIED   "runs as root only"
 pod nolimits false no busybox:1.37 true no    | check ADMITTED "no resource limits (audit until Phase 5)"
+pod_env envlit '{name: DB_PASSWORD, value: x}' | check DENIED   "password as a literal env var"
+pod_env envref '{name: PGPASSWORD, valueFrom: {secretKeyRef: {name: s, key: p}}}' \
+                                              | check DENIED   "Secret as env var (secretKeyRef)"
+pod_env envfile '{name: PGPASSWORD_FILE, value: /etc/creds/password}' \
+                                              | check ADMITTED "*_FILE env var with a path (control)"
+printf 'apiVersion: v1\nkind: ConfigMap\nmetadata: {name: cm}\ndata: {PGHOST: db, PGPASSWORD: x}\n' \
+                                              | check DENIED   "ConfigMap with a PGPASSWORD key"
 sed 's/^/      /' <(pod x true | sed -n '/^spec:/,$p' | tail -n +2) | {
   printf 'apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: privileged-deploy}\nspec:\n  selector: {matchLabels: {app: x}}\n  template:\n    metadata: {labels: {app: x}}\n    spec:\n'
   cat

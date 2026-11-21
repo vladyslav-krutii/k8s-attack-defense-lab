@@ -1,4 +1,4 @@
-# The five policies, as written and as tested by "kyverno test".
+# The policies, as written and as tested by "kyverno test".
 # Not applied directly: see ../audit and ../enforce.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -8,3 +8,5 @@ resources:
   - disallow-latest-tag.yaml
   - require-resource-limits.yaml
   - require-run-as-nonroot.yaml
+  - disallow-secrets-in-env.yaml
+  - disallow-secrets-in-configmaps.yaml
