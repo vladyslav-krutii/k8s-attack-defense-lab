@@ -8,6 +8,7 @@
 #   Layer 3  Network policies  -> blocks scenario 3 (lateral movement to db)
 #   Layer 4  Secrets as files  -> blocks scenario 4 (password in env/ConfigMap)
 #   Layer 5  RO root FS+limits -> blocks scenario 5 (tool drop, resource abuse)
+#   Layer 6  Images by digest  -> blocks scenario 6 (re-pointed image tag)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -39,3 +40,22 @@ patches:
 
   # --- Layer 5: Read-only root FS + resource limits ------------------------
   - path: patches/runtime-limits.yaml
+
+# --- Layer 6: images pinned by digest (scenario 6) ---------------------------
+# A tag is a movable pointer; a digest is the hash of the image content, so
+# the same manifest always runs the same bytes. The tag stays in front of
+# the digest for humans; the runtime ignores it when a digest is present.
+# Digests of the multi-arch index, as published on Docker Hub. Updating them
+# is a deliberate change (Renovate/Dependabot would open the PR).
+#
+# The api image is built locally, so its digest is only known after
+# "make load": "make hardened" renders this overlay through
+# scripts/render-pinned.sh, which appends it. Applying this overlay with
+# "kubectl apply -k" alone is therefore rejected by require-image-digest.
+images:
+  - name: postgres
+    newTag: 17.12-alpine
+    digest: sha256:526f86d93c6ea08fd3f1fe5605650cacc781b2c6013169a0ad8f42c7d3d84f32
+  - name: nginxinc/nginx-unprivileged
+    newTag: 1.29.8-alpine
+    digest: sha256:0c79d56aee561a1d81c63f00eee5fb5fe29279560cdc55e91425133104c7fbe6

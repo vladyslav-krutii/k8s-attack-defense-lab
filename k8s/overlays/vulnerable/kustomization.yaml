@@ -27,6 +27,14 @@ patches:
   # still puts the password into the environment of every process.)
   - path: patches/04-api-password-in-configmap.yaml
 
+# Scenario 6: the api runs by the mutable tag "latest" (the other images by
+# version tags - also mutable, just less obviously). imagePullPolicy stays
+# IfNotPresent from the base: each node runs whatever it has cached under
+# that name, so two nodes can run different code from the same manifest.
+images:
+  - name: k8s-lab/api
+    newTag: latest
+
 # Scenario 4: the password copied into a ConfigMap. ConfigMaps are readable
 # with the built-in "view" role, which is designed to hide Secrets.
 configMapGenerator:

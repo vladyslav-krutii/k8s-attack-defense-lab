@@ -16,6 +16,7 @@ FALCO_CHART_VERSION   := 9.2.2
 HELM := helm --kube-context $(KUBE_CONTEXT)
 
 API_IMAGE := k8s-lab/api:0.2.0
+API_IMAGE_LATEST := k8s-lab/api:latest
 NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
@@ -129,7 +130,12 @@ falco-logs: ## Follow Falco alerts from all nodes (Ctrl+C to stop)
 	$(KUBECTL) -n falco logs -f -l app.kubernetes.io/name=falco -c falco --max-log-requests 5 --prefix
 
 build: ## Build the API image
-	docker build -t $(API_IMAGE) app/api
+	@# --provenance=false: BuildKit would attach a provenance attestation with
+	@# timestamps, so even a fully cached rebuild got a new index digest. kind
+	@# has no registry to keep attestations in; without them an unchanged
+	@# build keeps its digest, and the digest pinned by "make hardened" is
+	@# stable. (A CI build that pushes to a registry should keep them - Phase 6.)
+	docker build --provenance=false -t $(API_IMAGE) app/api
 
 load: build ## Copy the API image into the kind nodes (no registry needed)
 	kind load docker-image $(API_IMAGE) --name $(CLUSTER_NAME)
@@ -143,11 +149,18 @@ base: load ## Deploy the plain base app (no misconfigs, no defenses)
 # would leave e.g. a vulnerable RoleBinding behind (or a hardened
 # NetworkPolicy), and the scenario results would lie.
 vulnerable: load undeploy ## Deploy the VULNERABLE overlay (clean namespace)
+	@# Scenario 6: the vulnerable overlay runs the api by the mutable tag
+	@# "latest". Point it at the image just built, on every node.
+	docker tag $(API_IMAGE) $(API_IMAGE_LATEST)
+	kind load docker-image $(API_IMAGE_LATEST) --name $(CLUSTER_NAME)
 	$(KUBECTL) apply -k k8s/overlays/vulnerable
 	$(KUBECTL) -n $(NAMESPACE) rollout status deploy/db deploy/api deploy/web --timeout=180s
 
 hardened: load undeploy ## Deploy the HARDENED overlay (clean namespace)
-	$(KUBECTL) apply -k k8s/overlays/hardened
+	@# Scenario 6: every image pinned by digest. The api digest is only
+	@# known after the build, so it is filled in at render time.
+	KUBE_CONTEXT=$(KUBE_CONTEXT) CLUSTER_NAME=$(CLUSTER_NAME) API_IMAGE=$(API_IMAGE) \
+	  bash scripts/render-pinned.sh k8s/overlays/hardened | $(KUBECTL) apply -f -
 	$(KUBECTL) -n $(NAMESPACE) rollout status deploy/db deploy/api deploy/web --timeout=180s
 
 scenario-%: ## Run attack demo N, e.g. make scenario-1
