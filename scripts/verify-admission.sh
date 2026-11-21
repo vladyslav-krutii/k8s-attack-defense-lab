@@ -31,9 +31,12 @@ fi
 echo "    labels: $(kubectl get namespace "$PROBE_NS" -o jsonpath='{.metadata.labels}')"
 
 # A pod that satisfies every policy; each case changes exactly one thing.
+# The default image is pinned by digest (require-image-digest); a dry run
+# never pulls it.
+BUSYBOX=busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
 #   pod <name> [privileged] [hostpath] [image] [nonroot] [limits] [readonly]
 pod() {
-  local name=$1 privileged=${2:-false} hostpath=${3:-no} image=${4:-busybox:1.37}
+  local name=$1 privileged=${2:-false} hostpath=${3:-no} image=${4:-$BUSYBOX}
   local nonroot=${5:-true} limits=${6:-yes} readonly=${7:-true}
   cat <<EOF
 apiVersion: v1
@@ -85,11 +88,12 @@ pod good                                      | check ADMITTED "compliant pod (c
 check DENIED "scenario 1 pod (privileged + hostPath /)" < scenarios/01-privileged-hostpath/probe-pod.yaml
 pod privileged true                           | check DENIED   "privileged container only"
 pod hostpath false yes                        | check DENIED   "hostPath volume only"
-pod latest false no busybox:latest            | check DENIED   "image tag 'latest' only"
-pod notag false no busybox                    | check DENIED   "no image tag only"
-pod root false no busybox:1.37 false          | check DENIED   "runs as root only"
-pod nolimits false no busybox:1.37 true no    | check DENIED   "no resource limits only"
-pod rwroot false no busybox:1.37 true yes false | check DENIED  "writable root filesystem only"
+pod latest false no busybox:latest            | check DENIED   "image tag 'latest' (no digest either)"
+pod notag false no busybox                    | check DENIED   "no image tag (no digest either)"
+pod tagonly false no busybox:1.37            | check DENIED   "version tag without a digest only"
+pod root false no "$BUSYBOX" false          | check DENIED   "runs as root only"
+pod nolimits false no "$BUSYBOX" true no    | check DENIED   "no resource limits only"
+pod rwroot false no "$BUSYBOX" true yes false | check DENIED  "writable root filesystem only"
 pod_env envlit '{name: DB_PASSWORD, value: x}' | check DENIED   "password as a literal env var"
 pod_env envref '{name: PGPASSWORD, valueFrom: {secretKeyRef: {name: s, key: p}}}' \
                                               | check DENIED   "Secret as env var (secretKeyRef)"

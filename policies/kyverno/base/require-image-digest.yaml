@@ -1,0 +1,64 @@
+# Scenario 6: every image must be referenced by digest (@sha256:...).
+# A tag - "latest" or "1.2.3" alike - is a pointer the registry owner can
+# move: the same manifest then runs different code after the next restart,
+# and the image that was scanned or signed is not necessarily the one that
+# runs. A digest is the hash of the content; it cannot be re-pointed.
+# disallow-latest-tag is the weaker, older guard; this one supersedes it.
+#
+# Trade-off: digests must be updated on every release. That is a job for
+# automation (CI writing the digest, Renovate/Dependabot for base images),
+# not for humans. A digest also says nothing about WHO built the image -
+# that needs signature verification (Cosign + ImageValidatingPolicy,
+# planned for scenario 7).
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-image-digest
+  annotations:
+    policies.kyverno.io/title: Require images pinned by digest
+    policies.kyverno.io/category: k8s-attack-defense-lab (scenario 6)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Every container image must be referenced by a sha256 digest
+      (name@sha256:... or name:tag@sha256:...).
+spec:
+  validationActions: ["Deny"]
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["pods/ephemeralcontainers"]
+  variables:
+    - name: podSpec
+      expression: >-
+        object.spec.?jobTemplate.?spec.?template.?spec.orValue(
+        object.spec.?template.?spec.orValue(object.spec))
+    - name: allContainers
+      expression: >-
+        variables.podSpec.containers +
+        variables.podSpec.?initContainers.orValue([]) +
+        variables.podSpec.?ephemeralContainers.orValue([])
+  validations:
+    # 64 hex characters: "@sha256:" alone, or a truncated hash, is not a pin.
+    - expression: >-
+        variables.allContainers.all(c,
+        c.image.matches('@sha256:[a-f0-9]{64}$'))
+      message: >-
+        Images must be pinned by digest (image@sha256:<64 hex>); a tag can
+        be re-pointed to different content.

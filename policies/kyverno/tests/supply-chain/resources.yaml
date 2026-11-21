@@ -1,0 +1,67 @@
+# Fixtures for require-image-digest (scenario 6). bad-* FAIL, good-* PASS.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-digest-only
+spec:
+  containers:
+  - name: app
+    image: registry.example/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+# Tag kept for humans, digest decides.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: good-deployment-tag-and-digest
+spec:
+  selector: {matchLabels: {app: x}}
+  template:
+    metadata: {labels: {app: x}}
+    spec:
+      initContainers:
+      - name: init
+        image: localhost:5000/init:1.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      containers:
+      - name: app
+        image: registry.example/app:1.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-version-tag
+spec:
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-latest
+spec:
+  containers:
+  - name: app
+    image: registry.example/app:latest
+---
+# Truncated hash: looks pinned, is not.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-short-digest
+spec:
+  containers:
+  - name: app
+    image: registry.example/app@sha256:abc123
+---
+# Main container pinned, init container not.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-init-tag
+spec:
+  initContainers:
+  - name: init
+    image: registry.example/init:1.0
+  containers:
+  - name: app
+    image: registry.example/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

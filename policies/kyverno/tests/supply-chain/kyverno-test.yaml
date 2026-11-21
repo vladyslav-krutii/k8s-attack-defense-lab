@@ -1,0 +1,31 @@
+# Offline tests for the scenario 6 policy (part of "make policy-test").
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: scenario-6-supply-chain
+policies:
+  - ../../base/require-image-digest.yaml
+resources:
+  - resources.yaml
+results:
+  - isValidatingPolicy: true
+    policy: require-image-digest
+    kind: Pod
+    result: fail
+    resources:
+      - bad-pod-version-tag
+      - bad-pod-latest
+      - bad-pod-short-digest
+      - bad-pod-init-tag
+  - isValidatingPolicy: true
+    policy: require-image-digest
+    kind: Pod
+    result: pass
+    resources:
+      - good-pod-digest-only
+  - isValidatingPolicy: true
+    policy: require-image-digest
+    kind: Deployment
+    result: pass
+    resources:
+      - good-deployment-tag-and-digest
