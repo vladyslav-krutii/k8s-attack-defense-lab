@@ -29,6 +29,21 @@ config:
             - tigera-operator
             - local-path-storage
 
+# The reports controller runs the background scans. The chart default
+# memory limit (128Mi) became too small once the lab had 11 policies plus
+# other projects' policies in the cluster (an image-signature check pulls
+# Sigstore data into memory): the container sat at its limit, the kernel
+# reclaimed constantly (memory.events "max" climbing by ~150/s), the process
+# stalled, missed its leader-lease renewal and shut itself down - "Completed",
+# exit 0, no OOM kill, so it did not look like a memory problem. Reports then
+# never finished ("make reports" timed out).
+reportsController:
+  resources:
+    requests:
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
 # Replicas are left at the chart default (1 per controller). Production uses
 # at least 3 admission controller replicas so a single pod restart does not
 # turn fail-closed into "cluster rejects everything".
