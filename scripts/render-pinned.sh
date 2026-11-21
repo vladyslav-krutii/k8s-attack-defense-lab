@@ -53,6 +53,8 @@ done
 echo "render-pinned: $IMAGE -> $digest" >&2
 
 rendered=$(kubectl --context "$CONTEXT" kustomize "$OVERLAY")
+# sed, not ${var//}: the match must be anchored at the end of the line.
+# shellcheck disable=SC2001
 pinned=$(sed "s|image: $IMAGE\$|image: $IMAGE@$digest|" <<<"$rendered")
 if ! grep -qF "image: $IMAGE@$digest" <<<"$pinned"; then
   echo "render-pinned: no 'image: $IMAGE' line found in $OVERLAY" >&2; exit 1

@@ -55,7 +55,7 @@ elif ! grep -q 'require-image-digest' <<<"$out"; then
 fi
 
 if [ ${#findings[@]} -gt 0 ]; then
-  verdict "$EXPLOITABLE" "$(IFS=';'; echo "${findings[*]}" | sed 's/;/, /g')"
+  verdict "$EXPLOITABLE" "$(join_list "${findings[@]}")"
 fi
 out=$(probe "$BUSYBOX_PINNED") \
   || verdict "$INCONCLUSIVE" "control probe (pinned) was rejected too: $(head -1 <<<"$out")"

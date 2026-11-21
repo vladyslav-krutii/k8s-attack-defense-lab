@@ -36,7 +36,7 @@
 # window is measured from the creation of the namespace.
 # Exit 0 if everything matches, 1 on a mismatch, 2 if the check could not run.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 2
 source scenarios/lib.sh
 
 R1="Shell spawned without a terminal in a pod"
@@ -126,7 +126,7 @@ else echo "FAIL  normal traffic raised lab alerts:"; cut -c1-220 <<<"$fp"; fail=
 echo
 echo "==> Detection check"
 attack=$(window "$attack_start" "$attack_end")
-printf '%-6s %-56s %-8s %-6s %s\n' RESULT RULE EXPECTED ALERTS
+printf '%-6s %-56s %-8s %s\n' RESULT RULE EXPECTED ALERTS
 i=0
 for r in "$R1" "$R2" "$R3" "$R4" "$R5" "$R6"; do
   n=$(grep -cF "$r" <<<"$attack" || true)

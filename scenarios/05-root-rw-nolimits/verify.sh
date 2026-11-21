@@ -17,6 +17,8 @@ kubectl -n "$NS" rollout status deploy/api deploy/db --timeout=60s >/dev/null 2>
 findings=()
 for app in web api db; do
   # One exec per container: uid, root FS mode, memory.max, cpu quota.
+  # Single quotes on purpose: the script runs in the container's sh.
+  # shellcheck disable=SC2016
   read -r uid rootfs mem cpu < <(kubectl -n "$NS" exec "deploy/$app" -- sh -c '
     printf "%s %s %s %s\n" "$(id -u)" \
       "$(awk "\$2 == \"/\" {split(\$4, o, \",\"); print o[1]}" /proc/mounts)" \
@@ -29,6 +31,6 @@ for app in web api db; do
 done
 
 if [ ${#findings[@]} -gt 0 ]; then
-  verdict "$EXPLOITABLE" "$(IFS=';'; echo "${findings[*]}" | sed 's/;/, /g')"
+  verdict "$EXPLOITABLE" "$(join_list "${findings[@]}")"
 fi
 verdict "$BLOCKED" "web, api, db: non-root, read-only root FS, CPU and memory limits"

@@ -29,6 +29,8 @@ step "A developer with the 'view' role may not read Secrets"
 info "kubectl auth can-i get secrets: $(kubectl auth can-i get secrets -n "$NS" "${VIEWER[@]}" || true)"
 
 step "...but 'view' reads every ConfigMap - any credential-like keys?"
+# Single quotes on purpose: $n, $k, $v are go-template variables.
+# shellcheck disable=SC2016
 found=$(kubectl -n "$NS" get configmaps "${VIEWER[@]}" -o go-template='{{range .items}}{{$n := .metadata.name}}{{range $k, $v := .data}}{{$n}}/{{$k}}={{$v}}{{"\n"}}{{end}}{{end}}' \
   | grep -iE "^[^=/]+/[^=]*${CRED_RE}[^=]*=" || true)
 if [ -n "$found" ]; then mask <<<"$found"; else info "none"; fi

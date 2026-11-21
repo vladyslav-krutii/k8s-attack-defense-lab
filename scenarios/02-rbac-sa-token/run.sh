@@ -11,6 +11,8 @@ require_web
 # Runs inside the web container: an authenticated API request using the
 # mounted token and CA bundle. $1 = HTTP method, $2 = API path.
 api_call() {
+  # Single quotes on purpose: $SA, $1... expand in the container's sh.
+  # shellcheck disable=SC2016
   in_web sh -c '
     SA=/var/run/secrets/kubernetes.io/serviceaccount
     curl -sS --cacert "$SA/ca.crt" \

@@ -30,6 +30,8 @@ else
 fi
 
 step "The same from /tmp (writable in both overlays: an emptyDir in hardened)"
+# Single quotes on purpose: $? and $rc expand in the container's sh.
+# shellcheck disable=SC2016
 if in_web sh -c 'cp /bin/busybox /tmp/busybox-lab-tool && /tmp/busybox-lab-tool echo "busybox-lab-tool executed from /tmp"; rc=$?; rm -f /tmp/busybox-lab-tool; exit $rc' \
     2>/dev/null | sed 's/^/    /'; then
   info "read-only root FS does NOT stop this: an emptyDir cannot be mounted"
@@ -46,6 +48,8 @@ info "node allocatable: $(kubectl get node "$(kubectl -n "$NS" get pod -l app=we
   -o jsonpath='{.status.allocatable.cpu} CPUs, {.status.allocatable.memory}')"
 
 step "3-second CPU burn on one core: does the limit throttle it?"
+# Single quotes on purpose: the whole script runs in the container's sh.
+# shellcheck disable=SC2016
 burn=$(in_web sh -c '
   t0=$(awk "/^nr_throttled/ {print \$2}" /sys/fs/cgroup/cpu.stat)
   timeout 3 sh -c "while :; do :; done" 2>/dev/null || true

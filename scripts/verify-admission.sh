@@ -13,7 +13,7 @@
 # admission chain, but nothing is stored or run.
 # Exit 0 if every case matches its expectation, 1 otherwise.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 2
 
 PROBE_NS=admission-probe
 kubectl() { command kubectl --context "${KUBE_CONTEXT:-kind-k8s-lab}" "$@"; }
@@ -66,8 +66,7 @@ failures=0
 # check <expect: ADMITTED|DENIED> <description> < manifest
 check() {
   local expect=$1 desc=$2 out got by
-  out=$(kubectl -n "$PROBE_NS" apply --dry-run=server -o name -f - 2>&1)
-  if [ $? -eq 0 ]; then
+  if out=$(kubectl -n "$PROBE_NS" apply --dry-run=server -o name -f - 2>&1); then
     got=ADMITTED; by=""
   else
     got=DENIED

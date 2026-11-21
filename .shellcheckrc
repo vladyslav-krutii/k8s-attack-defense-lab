@@ -1,0 +1,6 @@
+# shellcheck configuration (make shellcheck, CI static job).
+# Follow "source scenarios/lib.sh" so variables and functions defined there
+# are checked, instead of silencing SC1091 ("not following").
+external-sources=true
+source-path=SCRIPTDIR
+source-path=SCRIPTDIR/..

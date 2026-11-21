@@ -17,6 +17,8 @@ kubectl() { command kubectl --context "$LAB_CONTEXT" "$@"; }
 # be mistaken for "the defense works".
 EXPLOITABLE=0   # the misconfiguration can be abused
 BLOCKED=1       # the attack fails because of a defense
+# Used only by the scripts that source this file (lib.sh itself never does).
+# shellcheck disable=SC2034
 INCONCLUSIVE=2  # the test itself could not run (pod missing, tool missing...)
 
 step() { printf '\n==> %s\n' "$*"; }
@@ -38,6 +40,9 @@ in_web() { kubectl -n "$NS" exec deploy/web -c nginx -- "$@"; }
 overlay() {
   kubectl get namespace "$NS" -o jsonpath='{.metadata.labels.lab/overlay}' 2>/dev/null || true
 }
+
+# "a" "b c" "d" -> "a, b c, d" (for verdict details built from an array).
+join_list() { local out; printf -v out '%s, ' "$@"; echo "${out%, }"; }
 
 # verify.sh helper: print a one-line verdict and exit with the matching code.
 verdict() {

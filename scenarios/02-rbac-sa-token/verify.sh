@@ -20,6 +20,8 @@ if ! in_web test -r "$SA/token" 2>/dev/null; then
 fi
 
 # -w prints only the HTTP status; 000 means no connection at all.
+# Single quotes on purpose: $1, $2 and $(cat ...) expand in the container.
+# shellcheck disable=SC2016
 code=$(in_web sh -c '
   curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
        --cacert "$1/ca.crt" -H "Authorization: Bearer $(cat "$1/token")" \

@@ -33,7 +33,7 @@ for app in api db; do
 done
 
 if [ ${#leaks[@]} -gt 0 ]; then
-  verdict "$EXPLOITABLE" "DB password $(IFS=';'; echo "${leaks[*]}" | sed 's/;/, /g')"
+  verdict "$EXPLOITABLE" "DB password $(join_list "${leaks[@]}")"
 fi
 
 # Control: "no leak" only counts if the app still gets the password somehow.

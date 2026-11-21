@@ -8,7 +8,7 @@
 # --expect is what CI (Phase 6) uses: vulnerable must stay exploitable (the
 # demo still works) and hardened must block everything (the fix still works).
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 2
 
 expect=""
 if [ "${1:-}" = "--expect" ]; then
