@@ -60,3 +60,32 @@ jobs:
 
       - name: trivy config (hardened clean, vulnerable not)
         run: make scan-config
+
+  image:
+    name: api image scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          make ci-tools
+
+      # Build, push to a throwaway registry on 127.0.0.1, scan that digest.
+      - name: Build and trivy-scan by digest
+        run: make scan-image
+
+      - name: Upload SBOM and scan result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-image-scan
+          path: scan-out/
+          retention-days: 14
+          if-no-files-found: warn
