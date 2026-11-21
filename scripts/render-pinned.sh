@@ -20,7 +20,7 @@
 set -euo pipefail
 
 OVERLAY=${1:?usage: $0 <kustomize overlay dir>}
-IMAGE=${API_IMAGE:-k8s-lab/api:0.2.0}
+IMAGE=${API_IMAGE:-k8s-lab/api:0.2.1}
 CLUSTER=${CLUSTER_NAME:-k8s-lab}
 CONTEXT=${KUBE_CONTEXT:-kind-$CLUSTER}
 REF="docker.io/$IMAGE"

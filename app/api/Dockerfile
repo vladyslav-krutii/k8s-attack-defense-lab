@@ -24,6 +24,15 @@ RUN npm run build && npm prune --omit=dev
 # VULNERABLE overlay to demonstrate what an attacker can do in a container.
 FROM node:24.22.3-alpine3.24 AS runtime
 ENV NODE_ENV=production
+# The base image ships npm, corepack and yarn. The app never uses them at
+# runtime (CMD runs node directly), but they are attack surface - an
+# attacker in the container could "npm install" tools - and they carry their
+# own CVEs (trivy found fixable HIGHs in npm's bundled undici and
+# brace-expansion). Package managers belong to the build stage only.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /opt/yarn-* \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /usr/local/bin/yarn /usr/local/bin/yarnpkg
 WORKDIR /app
 
 COPY --from=build /app/node_modules ./node_modules

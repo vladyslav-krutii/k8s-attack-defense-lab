@@ -18,7 +18,7 @@ FALCO_CHART_VERSION   := 9.2.2
 FALCO_IMAGE := docker.io/falcosecurity/falco:0.45.2@sha256:1562a643953f938e02f47319b5214d93a235f11f646d60e9b8a516fd5a64698e
 HELM := helm --kube-context $(KUBE_CONTEXT)
 
-API_IMAGE := k8s-lab/api:0.2.0
+API_IMAGE := k8s-lab/api:0.2.1
 API_IMAGE_LATEST := k8s-lab/api:latest
 NAMESPACE := demo
 
@@ -26,7 +26,7 @@ NAMESPACE := demo
         build load base vulnerable hardened verify-all smoke port-forward undeploy \
         helm kubectl kyverno-cli kyverno policy-test policies verify-admission reports \
         falco falco-logs verify-detection \
-        ci-tools lint shellcheck falco-validate secrets-scan scan-config ci-static
+        ci-tools lint shellcheck falco-validate secrets-scan scan-config ci-static scan-image
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -161,8 +161,13 @@ build: ## Build the API image
 	@# timestamps, so even a fully cached rebuild got a new index digest. kind
 	@# has no registry to keep attestations in; without them an unchanged
 	@# build keeps its digest, and the digest pinned by "make hardened" is
-	@# stable. (A CI build that pushes to a registry should keep them - Phase 6.)
+	@# stable. The CI image job pushes only to a throwaway local registry, so
+	@# it builds the same way; signed provenance belongs to a real registry
+	@# (GHCR, scenario 7).
 	docker build --provenance=false -t $(API_IMAGE) app/api
+
+scan-image: build ## Push the api image to a throwaway local registry, trivy-scan it by digest
+	API_IMAGE=$(API_IMAGE) bash scripts/scan-image.sh
 
 load: build ## Copy the API image into the kind nodes (no registry needed)
 	kind load docker-image $(API_IMAGE) --name $(CLUSTER_NAME)

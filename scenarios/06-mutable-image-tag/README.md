@@ -45,7 +45,7 @@ Runs on the host (needs `docker` and `kind`), fully local:
 4. It checks whether the new pod contains `/app/TAMPERED`.
 5. It restores the genuine image and restarts api again.
 
-| | vulnerable (`api:latest`) | hardened (`api:0.2.0@sha256:…`) |
+| | vulnerable (`api:latest`) | hardened (`api:0.2.1@sha256:…`) |
 |---|---|---|
 | Deployment image after the attack | unchanged | unchanged |
 | running image | the attacker's | the pinned, genuine one |
