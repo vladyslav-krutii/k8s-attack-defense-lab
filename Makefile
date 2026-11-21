@@ -13,6 +13,9 @@ KUBECTL := kubectl --context $(KUBE_CONTEXT)
 
 KYVERNO_CHART_VERSION := 3.10.0
 FALCO_CHART_VERSION   := 9.2.2
+# The Falco version that chart 9.2.2 deploys, pinned by digest; used offline
+# to validate the custom rules (make falco-validate).
+FALCO_IMAGE := docker.io/falcosecurity/falco:0.45.2@sha256:1562a643953f938e02f47319b5214d93a235f11f646d60e9b8a516fd5a64698e
 HELM := helm --kube-context $(KUBE_CONTEXT)
 
 API_IMAGE := k8s-lab/api:0.2.0
@@ -22,7 +25,8 @@ NAMESPACE := demo
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \
         build load base vulnerable hardened verify-all smoke port-forward undeploy \
         helm kubectl kyverno-cli kyverno policy-test policies verify-admission reports \
-        falco falco-logs verify-detection
+        falco falco-logs verify-detection \
+        ci-tools lint shellcheck falco-validate secrets-scan scan-config ci-static
 
 help: ## Show available targets
 	@grep -E '^[a-z0-9%-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -72,6 +76,29 @@ kyverno-cli: ## Install pinned Kyverno CLI into ~/.local/bin (checksum-verified)
 
 policy-test: ## Offline Kyverno policy tests (no cluster needed)
 	kyverno test policies/kyverno/tests --require-tests
+
+# --- Static checks (no cluster; the CI "static" job runs each of these) ------
+
+ci-tools: ## Install pinned CI tools: kind, kubeconform, gitleaks, trivy, shellcheck
+	bash scripts/install-ci-tools.sh
+
+lint: ## Render every kustomization and validate it with kubeconform (strict)
+	bash scripts/lint-manifests.sh
+
+shellcheck: ## shellcheck every lab script (config: .shellcheckrc)
+	shellcheck scripts/*.sh scenarios/lib.sh scenarios/*/*.sh
+
+falco-validate: ## Compile the custom Falco rules with the pinned Falco image
+	docker run --rm -v "$(CURDIR)/detection/falco:/lab:ro" $(FALCO_IMAGE) \
+	  falco -V /etc/falco/falco_rules.yaml -V /lab/lab-rules.yaml
+
+secrets-scan: ## gitleaks over the whole git history (needs a full clone)
+	gitleaks git --no-banner --redact .
+
+scan-config: ## trivy config: hardened must be clean, vulnerable must not be
+	bash scripts/scan-config.sh
+
+ci-static: lint policy-test shellcheck falco-validate secrets-scan scan-config ## All static checks
 
 policies: ## Apply Kyverno policies (audit + enforce variants, chosen by ns label)
 	@# RBAC first: ClusterRole aggregation is asynchronous, and Kyverno

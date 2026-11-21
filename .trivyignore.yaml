@@ -1,0 +1,10 @@
+# Accepted trivy findings for the HARDENED overlay (scripts/scan-config.sh).
+# Each entry needs a reason. The vulnerable overlay is never filtered.
+misconfigurations:
+  - id: KSV-0125
+    statement: >-
+      "Image from an untrusted registry" for the locally built
+      k8s-lab/api (kind load, no registry in the lab) and
+      nginxinc/nginx-unprivileged (NGINX's own Docker Hub namespace). Both
+      are pinned by digest and require-image-digest enforces that.
+      Signature verification is planned for scenario 7 (SecScan from GHCR).
