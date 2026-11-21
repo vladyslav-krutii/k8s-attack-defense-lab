@@ -817,3 +817,36 @@ vulnerable експлуатується, hardened блокує.
 - Чому сканувати треба digest, а не тег?
 - Навіщо в пайплайні реєстр, якщо образ уже є локально в Docker?
 - Чому gate тільки на виправні вразливості, і в чому ризик такого вибору?
+
+## Phase 6 — e2e job: увесь лаб на kind у GitHub Actions
+
+**Що.** Job `e2e` (`needs: static`, до 60 хв) проганяє ті самі make-таргети,
+що й людина:
+1. `make cluster` (kind + Calico), `make kyverno policies`, `make falco`;
+2. vulnerable: `make vulnerable smoke`, `verify-all --expect exploitable`,
+   `make verify-detection`;
+3. hardened: `make hardened smoke`, `verify-all --expect blocked`,
+   `make verify-detection`;
+4. `make verify-admission`, `make reports`.
+
+Якщо щось падає, job збирає діагностику (поди, події, логи Kyverno і
+Falco) в artifact.
+
+**Навіщо.** Це перевірка головного твердження проєкту на чистому кластері:
+vulnerable експлуатується, hardened блокує, застосунок працює в обох, а
+детекція поводиться, як задокументовано. `needs: static` не витрачає 20
+хвилин кластера на маніфести, які не пройшли б навіть kubeconform.
+Перевірка обох напрямків важлива: «hardened блокує» без «vulnerable
+експлуатується» може означати, що зламаний сам тест.
+
+**Питання.**
+- Навіщо в CI перевіряти, що vulnerable-оверлей *досі* вразливий?
+- Чому e2e залежить від static job-а?
+- Що потрібно Falco з `modern_ebpf`, щоб працювати на GitHub-runner-і?
+
+Примітка до image job: у CI відскановано `sha256:bac0cc6f…`, а локально
+`sha256:3a0dc516…` — з того самого Dockerfile і коміту. Збірка не
+відтворювана побайтово між машинами (часові мітки шарів). Звідси правило:
+сканувати й підписувати треба конкретний digest, який буде задеплоєно, а не
+«той самий Dockerfile». Відтворювані збірки (`SOURCE_DATE_EPOCH`) — окрема
+тема на майбутнє.

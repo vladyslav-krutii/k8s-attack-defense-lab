@@ -89,3 +89,79 @@ jobs:
           path: scan-out/
           retention-days: 14
           if-no-files-found: warn
+
+  # The claim of the whole project, tested end to end on a real cluster:
+  # vulnerable stays exploitable, hardened blocks everything, the app works
+  # in both, and the runtime rules fire (or stay silent) as documented.
+  e2e:
+    name: e2e on kind
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: static # no point in a 20-minute cluster run on broken manifests
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          make kubectl helm ci-tools
+
+      - name: Create cluster (kind + Calico)
+        run: make cluster
+
+      - name: Install Kyverno and the lab policies
+        run: make kyverno policies
+
+      - name: Install Falco (modern eBPF, lab rules)
+        run: make falco
+
+      - name: Vulnerable overlay - deploy, smoke test
+        run: make vulnerable smoke
+
+      - name: Vulnerable overlay - every scenario must be EXPLOITABLE
+        run: bash scripts/verify-all.sh --expect exploitable
+
+      - name: Vulnerable overlay - Falco rules
+        run: make verify-detection
+
+      - name: Hardened overlay - deploy, smoke test
+        run: make hardened smoke
+
+      - name: Hardened overlay - every scenario must be BLOCKED
+        run: bash scripts/verify-all.sh --expect blocked
+
+      - name: Hardened overlay - Falco rules
+        run: make verify-detection
+
+      - name: Kyverno alone blocks bad pods (no PSA)
+        run: make verify-admission
+
+      - name: Kyverno policy reports
+        run: make reports
+
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          mkdir -p e2e-diag
+          k="kubectl --context kind-k8s-lab"
+          $k get nodes -o wide > e2e-diag/nodes.txt 2>&1 || true
+          $k get pods -A -o wide > e2e-diag/pods.txt 2>&1 || true
+          $k get events -A --sort-by=.lastTimestamp > e2e-diag/events.txt 2>&1 || true
+          $k get validatingpolicies > e2e-diag/policies.txt 2>&1 || true
+          $k -n demo describe pods > e2e-diag/demo-pods.txt 2>&1 || true
+          $k -n falco logs -l app.kubernetes.io/name=falco -c falco --tail=-1 > e2e-diag/falco.log 2>&1 || true
+          for c in admission reports background; do
+            $k -n kyverno logs deploy/kyverno-$c-controller --tail=500 > "e2e-diag/kyverno-$c.log" 2>&1 || true
+          done
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-diagnostics
+          path: e2e-diag/
+          retention-days: 7
