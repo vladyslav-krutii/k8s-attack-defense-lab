@@ -121,6 +121,10 @@ a person runs locally.
   - The first e2e run failed because verify-all ran before
     verify-detection and polluted its start-up window. The steps are now
     in the right order.
+  - A later e2e run (docs-only commit `54222dc`) failed in
+    `make policies`. On a fresh cluster Kyverno's pods were Ready, but its
+    policy-validation webhook did not answer yet. `make policies` now
+    retries the idempotent apply for up to 90 s.
 - **Falco on GitHub-hosted runners: works.** `modern_ebpf` starts, and all
   six rules match the documented matrix on both overlays.
 - **Not done, deliberately.** The images are not pushed to a real registry

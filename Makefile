@@ -110,7 +110,17 @@ policies: ## Apply Kyverno policies (audit + enforce variants, chosen by ns labe
 	    --as=system:serviceaccount:kyverno:kyverno-reports-controller)" = yes ] && break; \
 	  sleep 1; \
 	done
-	$(KUBECTL) apply -k policies/kyverno
+	@# Retry: right after "make kyverno" the pods are Ready (helm --wait) but
+	@# Kyverno's own policy-validation webhook may not answer yet, and the
+	@# API server rejects the apply with "failed calling webhook
+	@# validate-policy.kyverno.svc" (seen in CI on a fresh cluster). apply
+	@# is idempotent, so retrying until the webhook answers is safe.
+	@for i in $$(seq 1 30); do \
+	  if out=$$($(KUBECTL) apply -k policies/kyverno 2>&1); then echo "$$out"; break; fi; \
+	  if [ $$i -eq 30 ]; then echo "$$out" >&2; exit 1; fi; \
+	  echo "policies: Kyverno webhook not ready yet (attempt $$i/30), retrying in 3s"; \
+	  sleep 3; \
+	done
 	@# A policy enforces only once Kyverno has configured its webhook; wait
 	@# for READY so a check run right after this target is not a false result.
 	$(KUBECTL) wait validatingpolicy --all --timeout=90s \
