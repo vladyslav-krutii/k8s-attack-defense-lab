@@ -1,0 +1,37 @@
+# Offline tests for the scenario 5 policy (part of "make policy-test").
+# require-resource-limits is covered by ../kyverno-test.yaml.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: scenario-5-runtime
+policies:
+  - ../../base/require-readonly-rootfs.yaml
+resources:
+  - resources.yaml
+results:
+  - isValidatingPolicy: true
+    policy: require-readonly-rootfs
+    kind: Pod
+    result: fail
+    resources:
+      - bad-pod-default-writable
+      - bad-pod-readonly-false
+      - bad-pod-init-writable
+  - isValidatingPolicy: true
+    policy: require-readonly-rootfs
+    kind: CronJob
+    result: fail
+    resources:
+      - bad-cronjob-writable
+  - isValidatingPolicy: true
+    policy: require-readonly-rootfs
+    kind: Pod
+    result: pass
+    resources:
+      - good-pod-readonly
+  - isValidatingPolicy: true
+    policy: require-readonly-rootfs
+    kind: Deployment
+    result: pass
+    resources:
+      - good-deployment-readonly

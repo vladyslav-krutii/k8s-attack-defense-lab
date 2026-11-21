@@ -10,3 +10,4 @@ resources:
   - require-run-as-nonroot.yaml
   - disallow-secrets-in-env.yaml
   - disallow-secrets-in-configmaps.yaml
+  - require-readonly-rootfs.yaml

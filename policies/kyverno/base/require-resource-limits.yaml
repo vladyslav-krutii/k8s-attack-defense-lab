@@ -1,4 +1,4 @@
-# Resource exhaustion (scenario 5 preview): CPU and memory limits required.
+# Resource exhaustion (scenario 5): CPU and memory limits required.
 # Without limits one compromised or buggy container (cryptominer, fork bomb,
 # memory leak) can starve every other pod on the node - a denial of service
 # that crosses tenant boundaries.

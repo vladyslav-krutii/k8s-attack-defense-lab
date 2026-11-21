@@ -22,15 +22,3 @@ patches:
             - key: lab/kyverno
               operator: In
               values: ["audit"]
-  # TEMPORARY until Phase 5 (scenario 5): the hardened workloads have no
-  # resource limits yet, so this one policy only audits in "enforce"
-  # namespaces too (and is left out of ../enforce). Phase 5 adds limits to
-  # the hardened overlay and moves this policy back to enforce.
-  - target:
-      group: policies.kyverno.io
-      kind: ValidatingPolicy
-      name: require-resource-limits
-    patch: |-
-      - op: replace
-        path: /spec/matchConstraints/namespaceSelector/matchExpressions/0/values
-        value: ["audit", "enforce"]

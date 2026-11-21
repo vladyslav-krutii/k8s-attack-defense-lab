@@ -1,0 +1,56 @@
+# Scenario 5: containers must run with a read-only root filesystem.
+# With a writable image filesystem, code execution in a container can add
+# tools, replace binaries, change config and hide there. Read-only forces
+# every writable path to be an explicit volume (emptyDir with a sizeLimit),
+# visible in the manifest and reviewable.
+#
+# Trade-off: ephemeral containers ("kubectl debug") are not checked. A
+# debugging session usually needs to write, and is a deliberate, audited
+# admin action; the other policies (privileged, root, latest) still apply
+# to them.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-readonly-rootfs
+  annotations:
+    policies.kyverno.io/title: Require a read-only root filesystem
+    policies.kyverno.io/category: k8s-attack-defense-lab (scenario 5)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Every container and init container must set
+      securityContext.readOnlyRootFilesystem to true.
+spec:
+  validationActions: ["Deny"]
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  variables:
+    - name: podSpec
+      expression: >-
+        object.spec.?jobTemplate.?spec.?template.?spec.orValue(
+        object.spec.?template.?spec.orValue(object.spec))
+    - name: containers
+      expression: >-
+        variables.podSpec.containers +
+        variables.podSpec.?initContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.containers.all(c,
+        c.?securityContext.?readOnlyRootFilesystem.orValue(false) == true)
+      message: >-
+        securityContext.readOnlyRootFilesystem must be true in every
+        container; mount an emptyDir where the app needs to write.

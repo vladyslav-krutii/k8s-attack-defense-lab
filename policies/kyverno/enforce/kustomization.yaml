@@ -21,14 +21,3 @@ patches:
             - key: lab/kyverno
               operator: In
               values: ["enforce"]
-  # TEMPORARY until Phase 5: see ../audit - limits are audited, not enforced.
-  - target:
-      group: policies.kyverno.io
-      kind: ValidatingPolicy
-      name: require-resource-limits
-    patch: |-
-      $patch: delete
-      apiVersion: policies.kyverno.io/v1
-      kind: ValidatingPolicy
-      metadata:
-        name: require-resource-limits

@@ -1,0 +1,82 @@
+# Fixtures for require-readonly-rootfs (scenario 5). bad-* FAIL, good-* PASS.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-readonly
+spec:
+  initContainers:
+  - name: init
+    image: registry.example/init:1.0
+    securityContext: {readOnlyRootFilesystem: true}
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    securityContext: {readOnlyRootFilesystem: true}
+    volumeMounts: [{name: tmp, mountPath: /tmp}]
+  volumes:
+  - name: tmp
+    emptyDir: {sizeLimit: 16Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: good-deployment-readonly
+spec:
+  selector: {matchLabels: {app: x}}
+  template:
+    metadata: {labels: {app: x}}
+    spec:
+      containers:
+      - name: app
+        image: registry.example/app:1.0
+        securityContext: {readOnlyRootFilesystem: true}
+---
+# No securityContext at all: writable by default.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-default-writable
+spec:
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+---
+# Explicitly false.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-readonly-false
+spec:
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    securityContext: {readOnlyRootFilesystem: false}
+---
+# The app container is fine, the init container is not.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-init-writable
+spec:
+  initContainers:
+  - name: init
+    image: registry.example/init:1.0
+  containers:
+  - name: app
+    image: registry.example/app:1.0
+    securityContext: {readOnlyRootFilesystem: true}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bad-cronjob-writable
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: job
+            image: registry.example/job:1.0

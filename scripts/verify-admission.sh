@@ -31,10 +31,10 @@ fi
 echo "    labels: $(kubectl get namespace "$PROBE_NS" -o jsonpath='{.metadata.labels}')"
 
 # A pod that satisfies every policy; each case changes exactly one thing.
-#   pod <name> [privileged] [hostpath] [image] [nonroot] [limits]
+#   pod <name> [privileged] [hostpath] [image] [nonroot] [limits] [readonly]
 pod() {
   local name=$1 privileged=${2:-false} hostpath=${3:-no} image=${4:-busybox:1.37}
-  local nonroot=${5:-true} limits=${6:-yes}
+  local nonroot=${5:-true} limits=${6:-yes} readonly=${7:-true}
   cat <<EOF
 apiVersion: v1
 kind: Pod
@@ -50,6 +50,7 @@ spec:
       command: ["sleep", "1"]
       securityContext:
         privileged: $privileged
+        readOnlyRootFilesystem: $readonly
 $([ "$limits" = yes ] && printf '      resources:\n        limits: {cpu: 50m, memory: 32Mi}\n')
 $([ "$hostpath" = yes ] && printf '      volumeMounts:\n        - {name: host, mountPath: /host}\n  volumes:\n    - name: host\n      hostPath: {path: /}\n')
 EOF
@@ -87,7 +88,8 @@ pod hostpath false yes                        | check DENIED   "hostPath volume 
 pod latest false no busybox:latest            | check DENIED   "image tag 'latest' only"
 pod notag false no busybox                    | check DENIED   "no image tag only"
 pod root false no busybox:1.37 false          | check DENIED   "runs as root only"
-pod nolimits false no busybox:1.37 true no    | check ADMITTED "no resource limits (audit until Phase 5)"
+pod nolimits false no busybox:1.37 true no    | check DENIED   "no resource limits only"
+pod rwroot false no busybox:1.37 true yes false | check DENIED  "writable root filesystem only"
 pod_env envlit '{name: DB_PASSWORD, value: x}' | check DENIED   "password as a literal env var"
 pod_env envref '{name: PGPASSWORD, valueFrom: {secretKeyRef: {name: s, key: p}}}' \
                                               | check DENIED   "Secret as env var (secretKeyRef)"

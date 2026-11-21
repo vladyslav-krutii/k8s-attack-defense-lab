@@ -1,4 +1,4 @@
-# Blocks the root part of scenario 1 (and scenario 5 preview).
+# Blocks the root part of scenarios 1 and 5.
 # Mirrors the Pod Security "restricted" rules:
 #  1. runAsNonRoot must be true - set on the pod, or on every container,
 #     and never overridden to false. The kubelet then refuses to start any
