@@ -16,8 +16,11 @@
 # --backgroundScanInterval is only the re-scan of unchanged resources.
 #
 # Done = every Deployment, ReplicaSet and Pod has a PolicyReport, no
-# EphemeralReports are pending, and every PolicyReport has a result for each
-# policy that selects this namespace (by its lab/kyverno label).
+# EphemeralReports are pending, and every workload PolicyReport has a
+# result for each pod-level policy that selects this namespace (by its
+# lab/kyverno label). Policies for other kinds (disallow-secrets-in-
+# configmaps) and the reports of those objects are not counted: a
+# ConfigMap report has one result, not one per policy.
 set -uo pipefail
 
 NS=${NAMESPACE:-demo}
@@ -26,23 +29,29 @@ kubectl() { command kubectl --context "${KUBE_CONTEXT:-kind-k8s-lab}" "$@"; }
 
 count() { kubectl -n "$NS" get "$1" -o name 2>/dev/null | wc -l; }
 
-# Policies whose namespaceSelector lists this namespace's lab/kyverno value.
+# Pod-level policies whose namespaceSelector lists this namespace's
+# lab/kyverno value.
 mode=$(kubectl get namespace "$NS" -o jsonpath='{.metadata.labels.lab/kyverno}')
 expected=$(kubectl get validatingpolicies \
-  -o jsonpath='{range .items[*]}{.spec.matchConstraints.namespaceSelector.matchExpressions[*].values}{"\n"}{end}' \
-  | grep -c "\"${mode:-none}\"")
+  -o jsonpath='{range .items[*]}{.spec.matchConstraints.namespaceSelector.matchExpressions[*].values} {.spec.matchConstraints.resourceRules[*].resources}{"\n"}{end}' \
+  | grep "\"${mode:-none}\"" | grep -c '"pods"')
 
-# Fewest results in any PolicyReport (0 if there are none yet).
-min_results() {
+# Workload PolicyReports (Deployment, ReplicaSet, Pod): "<kind> <results>".
+workload_reports() {
   kubectl -n "$NS" get policyreports \
-    -o jsonpath='{range .items[*]}{.summary.pass}{" "}{.summary.fail}{" "}{.summary.warn}{" "}{.summary.error}{" "}{.summary.skip}{"\n"}{end}' 2>/dev/null \
-    | awk 'BEGIN{m=-1} {t=$1+$2+$3+$4+$5; if (m<0 || t<m) m=t} END{print (m<0 ? 0 : m)}'
+    -o jsonpath='{range .items[*]}{.scope.kind}{" "}{.summary.pass}{" "}{.summary.fail}{" "}{.summary.warn}{" "}{.summary.error}{" "}{.summary.skip}{"\n"}{end}' 2>/dev/null \
+    | awk '$1 ~ /^(Deployment|ReplicaSet|Pod)$/ {print $1, $2+$3+$4+$5+$6}'
+}
+
+# Fewest results in any workload PolicyReport (0 if there are none yet).
+min_results() {
+  workload_reports | awk 'BEGIN{m=-1} {if (m<0 || $2<m) m=$2} END{print (m<0 ? 0 : m)}'
 }
 
 echo "==> Waiting up to ${TIMEOUT}s for Kyverno PolicyReports in '$NS' (lab/kyverno=${mode:-none}: $expected policies per resource)"
 start=$(date +%s)
 while :; do
-  pr=$(count policyreports); er=$(count ephemeralreports); min=$(min_results)
+  pr=$(workload_reports | wc -l); er=$(count ephemeralreports); min=$(min_results)
   workloads=$(kubectl -n "$NS" get deployments,replicasets,pods -o name 2>/dev/null | wc -l)
   elapsed=$(( $(date +%s) - start ))
   if [ "$expected" -gt 0 ] && [ "$pr" -gt 0 ] && [ "$pr" -ge "$workloads" ] \
