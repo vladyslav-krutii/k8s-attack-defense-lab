@@ -1,0 +1,62 @@
+# CI for the lab. Every job calls the same make targets a person runs
+# locally, so a red job can be reproduced with one command.
+#
+# Supply chain (scenario 6 applies to CI too):
+#  - actions pinned by full commit SHA (a tag can be moved), version in a
+#    comment; only GitHub's own actions are used;
+#  - tools are release binaries with verified SHA-256 (scripts/install-*.sh);
+#  - the token is read-only (permissions below), checkout does not persist it.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# No permissions by default; each job asks for what it needs.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  static:
+    name: static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans the whole history
+          persist-credentials: false
+
+      - name: Install pinned tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          make kubectl kyverno-cli ci-tools
+
+      - name: kustomize build + kubeconform
+        run: make lint
+
+      - name: kyverno test
+        run: make policy-test
+
+      - name: shellcheck
+        run: make shellcheck
+
+      - name: Falco rules validation
+        run: make falco-validate
+
+      - name: gitleaks (full history)
+        run: make secrets-scan
+
+      - name: trivy config (hardened clean, vulnerable not)
+        run: make scan-config

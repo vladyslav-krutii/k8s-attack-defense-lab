@@ -745,3 +745,28 @@ vulnerable експлуатується, hardened блокує.
 - Навіщо закріплювати навіть джерело JSON-схем за комітом?
 - Чим checksum зі сторінки релізу відрізняється від хешу в моєму скрипті
   (TOFU)?
+
+## Phase 6 — GitHub Actions: static job
+
+**Що.** `.github/workflows/ci.yml`, job `static` на `ubuntu-24.04`:
+1. встановлення закріплених інструментів (`make kubectl kyverno-cli ci-tools`);
+2. `make lint`, `policy-test`, `shellcheck`, `falco-validate`,
+   `secrets-scan`, `scan-config` — кожна перевірка окремим кроком, щоб у
+   виводі одразу було видно, яка впала.
+
+Гігієна:
+- `actions/checkout` закріплено за повним SHA (версія в коментарі);
+- `permissions: {}` на рівні workflow, `contents: read` для job-а;
+- `persist-credentials: false`;
+- `concurrency` скасовує застарілі запуски;
+- `timeout-minutes`.
+
+**Навіщо.** Тег action-а можна пересунути так само, як тег образу
+(сценарій 6), — саме так стався злам `tj-actions/changed-files` у 2025
+році. Повний SHA не пересунеш. Токен з мінімальними правами обмежує шкоду,
+якщо крок все ж скомпрометовано.
+
+**Питання.**
+- Чому action закріплюють за SHA, а не за тегом `v7`?
+- Що дає `permissions: {}` на верхньому рівні?
+- Навіщо `persist-credentials: false` у checkout?
