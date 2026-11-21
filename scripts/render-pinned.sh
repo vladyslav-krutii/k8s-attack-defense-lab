@@ -40,9 +40,14 @@ for node in $(kind get nodes --name "$CLUSTER"); do
   # imageID from the image's first digest name, so stale ones would make
   # "running imageID" disagree with the pinned digest. Content still used
   # under another name is not deleted by removing a name.
-  docker exec "$node" ctr -n k8s.io images ls -q \
-    | grep -F "${REF%:*}@sha256:" | grep -vF "$digest" \
-    | xargs -r docker exec "$node" ctr -n k8s.io images rm >/dev/null
+  # (grep exits 1 when nothing is stale; "|| true" keeps set -e from
+  # silently aborting the whole render in that - normal - case.)
+  stale=$(docker exec "$node" ctr -n k8s.io images ls -q \
+    | grep -F "${REF%:*}@sha256:" | grep -vF "$digest" || true)
+  if [ -n "$stale" ]; then
+    # shellcheck disable=SC2086  # one image name per word
+    docker exec "$node" ctr -n k8s.io images rm $stale >/dev/null
+  fi
   docker exec "$node" ctr -n k8s.io images tag --force "$REF" "${REF%:*}@$digest" >/dev/null
 done
 echo "render-pinned: $IMAGE -> $digest" >&2
