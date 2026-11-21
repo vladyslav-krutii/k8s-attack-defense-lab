@@ -16,7 +16,7 @@ spec:
           # Built locally and loaded into kind with "make load" - there is no
           # registry to pull from, so IfNotPresent is required. With "Always"
           # the kubelet would try Docker Hub and fail with ErrImagePull.
-          image: k8s-lab/api:0.1.0
+          image: k8s-lab/api:0.2.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -15,7 +15,7 @@ KYVERNO_CHART_VERSION := 3.10.0
 FALCO_CHART_VERSION   := 9.2.2
 HELM := helm --kube-context $(KUBE_CONTEXT)
 
-API_IMAGE := k8s-lab/api:0.1.0
+API_IMAGE := k8s-lab/api:0.2.0
 NAMESPACE := demo
 
 .PHONY: help tools cluster calico verify-netpol status cluster-delete \

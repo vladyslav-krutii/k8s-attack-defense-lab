@@ -1,5 +1,6 @@
 // Minimal notes API for the lab. Deliberately tiny: the project is about the
 // cluster configuration around the app, not the app itself.
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Pool } from "pg";
 
@@ -8,7 +9,20 @@ const MAX_BODY_BYTES = 10 * 1024;
 
 // pg reads PGHOST / PGUSER / PGPASSWORD / PGDATABASE from the environment,
 // so connection settings live in the Kubernetes manifests, not in code.
-const pool = new Pool({ max: 5, connectionTimeoutMillis: 3000 });
+//
+// PGPASSWORD_FILE (scenario 4): read the password from a mounted Secret file
+// instead of an environment variable. An env var is copied into every child
+// process, /proc/<pid>/environ and crash dumps; a file has to be read on
+// purpose. The file is read for every new connection, so a rotated Secret is
+// picked up without a restart (an env var is fixed for the process lifetime).
+const passwordFile = process.env.PGPASSWORD_FILE;
+const pool = new Pool({
+  max: 5,
+  connectionTimeoutMillis: 3000,
+  ...(passwordFile
+    ? { password: () => readFileSync(passwordFile, "utf8").replace(/\n$/, "") }
+    : {}),
+});
 
 let schemaReady = false;
 
