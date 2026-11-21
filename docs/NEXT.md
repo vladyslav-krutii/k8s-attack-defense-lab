@@ -1,6 +1,6 @@
 # Next session handoff
 
-_Last updated: 2026-11-21. Phase 6 (CI) is done._
+_Last updated: 2026-11-21. Phase 6 (CI) is done; next is Phase 7 (docs)._
 
 ## Current state
 
@@ -136,6 +136,25 @@ a person runs locally.
 
 Goal: a reviewer understands the project in 2 minutes and can verify every
 claim. One commit per document, plus LEARNING entries.
+
+**How to start the session.**
+1. `git log --oneline -15`, then check CI on `main` (`gh run list --limit 3`).
+   The last green run with all three jobs is 44936044477 on `9568ac3`.
+2. Open the SecScan repo's README, threat model and `INTERVIEW.md` as the
+   format reference (ask the user for the path or URL if it is not at
+   hand). Match the structure and tone; the content comes from this lab.
+3. Sources for every claim:
+   - `docs/LEARNING.md` (the why, the debugging stories, the questions);
+   - each `scenarios/0N-*/README.md` (impact, fix, limits);
+   - `detection/falco/README.md`;
+   - the CI logs (the numbers).
+
+   Do not invent numbers: copy them from a CI run and name that run.
+4. Order: README first (the most visible on the GitHub profile), then
+   THREAT-MODEL.md, then INTERVIEW.md. Push after each one and confirm CI
+   is green.
+5. No cluster is needed for Phase 7. Docker Desktop only matters for
+   re-running checks.
 
 1. **README rewrite** (replaces the short version).
    - A pitch, then a CI badge.
