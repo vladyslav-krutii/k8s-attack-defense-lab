@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runtime detection check for the three custom Falco rules
+# Runtime detection check for the six custom Falco rules
 # (detection/falco/lab-rules.yaml).
 #
 # 1. Quiet windows - no lab alert may appear while the app starts up
@@ -17,10 +17,20 @@
 #                                              nc's blocking connect (times
 #                                              out); scenario 2 stops before
 #                                              curl (no token)
+#      4 process environment read fires        fires (*)
+#      5 write below binary dir   fires        silent: read-only root FS
+#      6 exec from writable dir   fires        fires (**)
 #
 #    (*) Pod hardening does not take away an admin's pods/exec right or the
 #    shell in the nginx image, so the exec'd shell still runs - and should
 #    be reported. Making rule 1 silent would need an image without a shell.
+#    The same holds for rule 4: reading /proc/<pid>/environ is reported
+#    even when the environment no longer holds the password.
+#    (**) An emptyDir (/tmp) stays writable and cannot be mounted noexec,
+#    so a dropped tool still runs - the residual risk of scenario 5.
+#
+# Scenario 6 is not run: it has no runtime signal (a tampered image
+# behaves like the genuine one), and it restarts api mid-window.
 #
 # Run it right after "make vulnerable" or "make hardened": the start-up
 # window is measured from the creation of the namespace.
@@ -32,6 +42,9 @@ source scenarios/lib.sh
 R1="Shell spawned without a terminal in a pod"
 R2="Kubernetes credentials read in a pod"
 R3="Unexpected outbound connection from web"
+R4="Process environment read in a pod"
+R5="File written below a binary directory in a pod"
+R6="Executable started from a writable directory in a pod"
 SETTLE=15   # seconds after the last pod became Ready that still count as start-up
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -39,8 +52,8 @@ inconclusive() { echo "INCONCLUSIVE: $*"; exit 2; }
 
 ov=$(overlay)
 case $ov in
-  vulnerable) expect=(fire fire fire) ;;
-  hardened)   expect=(fire silent silent) ;;
+  vulnerable) expect=(fire fire fire fire fire fire) ;;
+  hardened)   expect=(fire silent silent fire silent fire) ;;
   *) inconclusive "namespace '$NS' has overlay '${ov:-none}', expected vulnerable or hardened" ;;
 esac
 echo "==> Overlay: $ov"
@@ -48,7 +61,7 @@ echo "==> Overlay: $ov"
 kubectl -n falco rollout status ds/falco --timeout=60s >/dev/null 2>&1 \
   || inconclusive "Falco is not running (make falco)"
 kubectl -n falco get configmap falco-rules -o jsonpath='{.data}' 2>/dev/null \
-  | grep -q 'Lab Shell Spawned Without Terminal' \
+  | grep -q 'Lab Executable Run From Writable Dir' \
   || inconclusive "lab rules are not loaded into Falco (make falco)"
 require_web || inconclusive "web is not ready"
 
@@ -79,7 +92,7 @@ echo "==> Attack triggers (scenario demos + RCE-style shell)"
 sleep 1
 attack_start=$(now)
 in_web sh -c id >/dev/null 2>&1 || true
-for s in scenarios/0[1-3]-*/run.sh; do
+for s in scenarios/0[1-5]-*/run.sh; do
   bash "$s" >/dev/null 2>&1 || true
   echo "    ran $s"
 done
@@ -94,7 +107,7 @@ logs=$(kubectl -n falco logs -l app.kubernetes.io/name=falco -c falco \
 
 # window <from> <to>: alert lines whose timestamp falls in [from, to].
 window() { awk -v a="$1" -v b="$2" 'substr($1,1,19) >= substr(a,1,19) && substr($1,1,19) <= substr(b,1,19)' <<<"$logs"; }
-lab_alerts() { grep -F -e "$R1" -e "$R2" -e "$R3" || true; }
+lab_alerts() { grep -F -e "$R1" -e "$R2" -e "$R3" -e "$R4" -e "$R5" -e "$R6" || true; }
 
 fail=0
 echo
@@ -113,9 +126,9 @@ else echo "FAIL  normal traffic raised lab alerts:"; cut -c1-220 <<<"$fp"; fail=
 echo
 echo "==> Detection check"
 attack=$(window "$attack_start" "$attack_end")
-printf '%-6s %-44s %-8s %-6s %s\n' RESULT RULE EXPECTED ALERTS
+printf '%-6s %-56s %-8s %-6s %s\n' RESULT RULE EXPECTED ALERTS
 i=0
-for r in "$R1" "$R2" "$R3"; do
+for r in "$R1" "$R2" "$R3" "$R4" "$R5" "$R6"; do
   n=$(grep -cF "$r" <<<"$attack" || true)
   want=${expect[$i]}
   if { [[ $want == fire ]] && (( n > 0 )); } || { [[ $want == silent ]] && (( n == 0 )); }; then
@@ -123,13 +136,13 @@ for r in "$R1" "$R2" "$R3"; do
   else
     res=FAIL; fail=1
   fi
-  printf '%-6s %-44s %-8s %s\n' "$res" "$r" "$want" "$n"
+  printf '%-6s %-56s %-8s %s\n' "$res" "$r" "$want" "$n"
   i=$((i + 1))
 done
 
 echo
 echo "==> Sample alerts (first per rule; output fields after ')' trimmed)"
-for r in "$R1" "$R2" "$R3"; do
+for r in "$R1" "$R2" "$R3" "$R4" "$R5" "$R6"; do
   grep -F "$r" <<<"$attack" | head -1 | sed -E 's/^[^ ]+ //; s/\) container_id=.*/)/' | cut -c1-300
 done
 

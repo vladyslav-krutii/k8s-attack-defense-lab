@@ -123,7 +123,7 @@ falco: ## Install/upgrade Falco (runtime detection, modern eBPF) via Helm
 	  case "$$sc" in *'"privileged":true'*) echo "ERROR: Falco runs privileged" >&2; exit 1;; esac
 	$(KUBECTL) -n falco get pods -o wide
 
-verify-detection: ## Trigger scenarios 1-3 and check the custom Falco rules fire (or stay silent)
+verify-detection: ## Trigger scenarios 1-5 and check the custom Falco rules fire (or stay silent)
 	KUBE_CONTEXT=$(KUBE_CONTEXT) NAMESPACE=$(NAMESPACE) bash scripts/verify-detection.sh
 
 falco-logs: ## Follow Falco alerts from all nodes (Ctrl+C to stop)

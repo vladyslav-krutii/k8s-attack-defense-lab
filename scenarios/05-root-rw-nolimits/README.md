@@ -73,6 +73,17 @@ volume. What covers that:
   moves from audit-only to **enforce** in hardened, now that the workloads
   have limits (the Phase 4 temporary exception is gone).
 
+## Detection (Falco)
+
+| Rule | vulnerable | hardened |
+|---|---|---|
+| [`Lab Write Below Binary Dir`](../../detection/falco/lab-rules.yaml): a successful write directly in `/usr/local/bin`, `/usr/bin`, `/lib`, ... | fires | silent (EROFS: the write never succeeds) |
+| [`Lab Executable Run From Writable Dir`](../../detection/falco/lab-rules.yaml): a process started from `/tmp`, `/var/tmp` or `/dev/shm` | fires | **fires**, the residual risk above |
+
+The stock rule "Drop and execute new binary in container" does not cover
+the hardened case. It looks for executables in the container's overlay
+upper layer, and an emptyDir is not part of it.
+
 ## Run
 
 ```bash

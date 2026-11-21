@@ -5,7 +5,7 @@
 # Installed by "make falco" through the chart's customRules value, which
 # mounts this file into /etc/falco/rules.d/.
 #
-# Design rules for all three:
+# Design rules for all of them:
 # - Narrow scope. Each rule names the pods it watches and the exceptions it
 #   knows about, instead of watching everything and drowning in noise.
 # - Only pods. Every condition requires Kubernetes metadata (k8s.ns.name),
@@ -205,3 +205,96 @@
     ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name)
   priority: WARNING
   tags: [lab, container, network, mitre_lateral_movement, T1046]
+
+# ---------------------------------------------------------------------------
+# Rule 4: reading another process's environment
+# ---------------------------------------------------------------------------
+
+# Why (scenario 4): environment variables are where credentials end up when
+# they are passed the "easy" way (env from a ConfigMap or secretKeyRef).
+# /proc/<pid>/environ exposes them to any process of the same user. Servers
+# do not read other processes' environments; recon scripts and attackers do
+# ("tr '\0' '\n' < /proc/1/environ").
+#
+# It fires in hardened too, on purpose: the read itself is the signal,
+# whether or not the environment still holds a secret.
+# Trade-off: tools like "ps e" or debuggers read environ as well; in an
+# application pod they are suspicious anyway.
+- rule: Lab Read Of Process Environment
+  desc: >
+    A process in an application pod read /proc/<pid>/environ, the
+    environment (and any credentials in it) of a process.
+  condition: >
+    lab_open_read_ok and lab_pod and not lab_runtime_init
+    and k8s.ns.name in (lab_app_namespaces)
+    and fd.name glob "/proc/*/environ"
+  output: >
+    Process environment read in a pod
+    (file=%fd.name process=%proc.name exe=%proc.exepath
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository)
+  priority: WARNING
+  tags: [lab, container, credentials, mitre_credential_access, T1552.007]
+
+# ---------------------------------------------------------------------------
+# Rule 5: writing into a binary directory
+# ---------------------------------------------------------------------------
+
+# The stock bin_dir macro covers only /bin, /sbin, /usr/bin and /usr/sbin.
+- list: lab_binary_dirs
+  items: [/bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin, /usr/local/sbin,
+          /lib, /usr/lib, /usr/local/lib]
+
+# Why (scenario 5): adding or replacing an executable inside a running
+# container is tool transfer or persistence; images never change at
+# runtime. Only successful opens for writing count, so in hardened (read-only
+# root FS, EROFS) the attempt is silent - the defense already worked.
+# fd.directory is the file's own directory: a write deeper below
+# (/usr/lib/node_modules/...) is not matched, which keeps package caches out
+# of scope - and keeps a backdoored node module out of scope, too.
+- rule: Lab Write Below Binary Dir
+  desc: >
+    A process in an application pod created or modified a file directly in a
+    binary or library directory of the container image.
+  condition: >
+    evt.type in (open, openat, openat2) and evt.is_open_write=true
+    and fd.num >= 0 and fd.typechar = 'f'
+    and lab_pod and not lab_runtime_init
+    and k8s.ns.name in (lab_app_namespaces)
+    and fd.directory in (lab_binary_dirs)
+  output: >
+    File written below a binary directory in a pod
+    (file=%fd.name process=%proc.name exe=%proc.exepath
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository)
+  priority: ERROR
+  tags: [lab, container, filesystem, mitre_persistence, T1105]
+
+# ---------------------------------------------------------------------------
+# Rule 6: executing a binary from a writable scratch directory
+# ---------------------------------------------------------------------------
+
+# Why (scenario 5): a read-only root filesystem still leaves the emptyDir
+# volumes writable - and Kubernetes cannot mount them noexec. A tool dropped
+# into /tmp runs in both overlays. The stock rule "Drop and execute new
+# binary in container" does not see this in hardened: it looks for
+# executables in the container's overlay upper layer, and an emptyDir is not
+# part of the overlay. This rule closes that gap by path.
+# Trade-off: by path only - a writable volume mounted elsewhere needs an
+# entry here (the lab's other writable paths are data/socket dirs).
+- rule: Lab Executable Run From Writable Dir
+  desc: >
+    A process in an application pod was started from an executable in a
+    scratch directory (/tmp, /var/tmp, /dev/shm).
+  condition: >
+    spawned_process and lab_pod
+    and k8s.ns.name in (lab_app_namespaces)
+    and (proc.exepath startswith /tmp/ or proc.exepath startswith /var/tmp/
+         or proc.exepath startswith /dev/shm/)
+  output: >
+    Executable started from a writable directory in a pod
+    (exe=%proc.exepath process=%proc.name parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository)
+  priority: ERROR
+  tags: [lab, container, process, mitre_execution, T1105]

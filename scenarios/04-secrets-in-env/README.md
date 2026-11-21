@@ -98,6 +98,14 @@ Audit in vulnerable (shows up in `make reports`), enforce in hardened.
 Trade-off: `secretKeyRef` is everywhere in public Helm charts. Enforcing it
 cluster-wide would start in Audit, with exceptions per chart.
 
+## Detection (Falco)
+
+[`Lab Read Of Process Environment`](../../detection/falco/lab-rules.yaml)
+fires when a process in an app pod opens `/proc/<pid>/environ`. Legitimate
+servers do not read other processes' environments, while recon scripts do.
+It fires on both overlays: the read itself is the signal, even when the
+environment no longer holds the password.
+
 ## Run
 
 ```bash
