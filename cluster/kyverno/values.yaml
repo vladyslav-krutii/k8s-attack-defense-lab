@@ -30,9 +30,10 @@ config:
             - local-path-storage
 
 # The reports controller runs the background scans. The chart default
-# memory limit (128Mi) became too small once the lab had 11 policies plus
-# other projects' policies in the cluster (an image-signature check pulls
-# Sigstore data into memory): the container sat at its limit, the kernel
+# memory limit (128Mi) became too small once the lab had 9 policies (18 with
+# the audit and enforce variants) plus another project's policies in the
+# cluster (an image-signature check pulls Sigstore data into memory): the
+# container sat at its limit, the kernel
 # reclaimed constantly (memory.events "max" climbing by ~150/s), the process
 # stalled, missed its leader-lease renewal and shut itself down - "Completed",
 # exit 0, no OOM kill, so it did not look like a memory problem. Reports then

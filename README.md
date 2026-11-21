@@ -26,8 +26,8 @@ and Falco detects the attacks at runtime.
 | 2 | [Over-permissive RBAC + auto-mounted token](scenarios/02-rbac-sa-token/) | reads every Secret | BLOCKED | no token, no RoleBinding, egress policy |
 | 3 | [No NetworkPolicy](scenarios/03-no-networkpolicy/) | web → db:5432 directly | BLOCKED | default-deny + explicit allows (Calico) |
 | 4 | [Credentials in env vars / ConfigMap](scenarios/04-secrets-in-env/) | password via `view` role and `printenv` | BLOCKED | Secret as a 0440 read-only file, Kyverno |
-| 5 | Root + no limits + writable root FS | *in progress (Phase 5)* | | |
-| 6 | Supply chain: mutable tags | *in progress (Phase 5)* | | |
+| 5 | [Root + writable root FS + no limits](scenarios/05-root-rw-nolimits/) | tool dropped into `/usr/local/bin`, no CPU/memory ceiling | BLOCKED | read-only root FS, requests/limits, Kyverno |
+| 6 | [Supply chain: mutable image tags](scenarios/06-mutable-image-tag/) | re-tagged `api:latest` runs after a restart | BLOCKED | every image pinned by digest, Kyverno |
 | 7 | SSRF → Kubernetes API (SecScan) | *planned* | | |
 
 ## Defense layers (hardened overlay)
@@ -39,10 +39,16 @@ and Falco detects the attacks at runtime.
 3. **Network**: default-deny ingress and egress; only web → api → db and
    DNS are allowed.
 4. **Secrets as files**: no credentials in env vars or ConfigMaps.
-5. **Admission control**: Kyverno `ValidatingPolicy` (CEL), audit in
+5. **Runtime limits**: read-only root FS (explicit emptyDirs with a
+   `sizeLimit`), CPU and memory requests and limits.
+6. **Supply chain**: images referenced as `name:tag@sha256:digest`.
+7. **Admission control**: 9 Kyverno `ValidatingPolicy` (CEL), audit in
    vulnerable and enforce in hardened. [`policies/kyverno/`](policies/kyverno/)
-6. **Runtime detection**: Falco (modern eBPF, not privileged) with custom
-   rules. [`detection/falco/`](detection/falco/)
+8. **Runtime detection**: Falco (modern eBPF, not privileged) with six
+   custom rules, including the residual risks the layers above leave open.
+   [`detection/falco/`](detection/falco/)
+
+Each scenario README also records what its fix does *not* cover.
 
 ## Quickstart
 
