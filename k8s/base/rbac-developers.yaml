@@ -1,0 +1,23 @@
+# Read-only access for the app's developers: the built-in "view" ClusterRole,
+# bound in this namespace to the group "lab:developers".
+#
+# This is NOT a misconfiguration - it is the access most teams hand out
+# freely, and it is in both overlays. "view" deliberately excludes Secrets
+# (and pods/exec), so it is considered safe for credentials. Scenario 4 shows
+# that this only holds while credentials actually live in Secrets: "view"
+# reads ConfigMaps and pod specs, so a password put there is readable too.
+#
+# Nobody logs in as this group in the lab; scripts impersonate it with
+# "kubectl --as=lab-developer --as-group=lab:developers".
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developers-view
+subjects:
+  - kind: Group
+    name: lab:developers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view

@@ -1,5 +1,6 @@
 # Base: the application itself, with NO security posture of its own.
-# No securityContext, no NetworkPolicy, no resource limits, default RBAC.
+# No securityContext, no NetworkPolicy, no resource limits, default RBAC
+# (plus read-only "view" for developers, see rbac-developers.yaml).
 # The two overlays then diverge from this identical starting point:
 #   overlays/vulnerable - adds realistic misconfigurations
 #   overlays/hardened   - adds the defenses
@@ -13,6 +14,7 @@ namespace: demo
 resources:
   - namespace.yaml
   - secret.yaml
+  - rbac-developers.yaml
   - db.yaml
   - api.yaml
   - web.yaml

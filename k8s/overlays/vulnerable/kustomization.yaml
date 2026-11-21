@@ -22,6 +22,17 @@ patches:
   - path: patches/01-web-privileged-hostpath.yaml
   # Scenario 2: web uses that service account, token auto-mounted.
   - path: patches/02-web-serviceaccount.yaml
+  # Scenario 4: api takes the DB password from a ConfigMap, as an env var.
+  # (db keeps the base's secretKeyRef env var - the common "default" that
+  # still puts the password into the environment of every process.)
+  - path: patches/04-api-password-in-configmap.yaml
+
+# Scenario 4: the password copied into a ConfigMap. ConfigMaps are readable
+# with the built-in "view" role, which is designed to hide Secrets.
+configMapGenerator:
+  - name: api-config
+    literals:
+      - PGPASSWORD=lab-only-not-a-real-password
 
 # Scenario 3 is a misconfiguration by ABSENCE: this overlay defines no
 # NetworkPolicy, so every pod can reach every other pod on every port.
