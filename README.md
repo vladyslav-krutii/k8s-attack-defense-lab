@@ -1,5 +1,7 @@
 # k8s-attack-defense-lab
 
+[![ci](https://github.com/vladyslav-krutii/k8s-attack-defense-lab/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vladyslav-krutii/k8s-attack-defense-lab/actions/workflows/ci.yml)
+
 A local Kubernetes lab that shows Kubernetes misconfigurations being
 exploited and then blocked. The same three-tier app (nginx `web` → Node
 `api` → Postgres `db`) is deployed twice from one base:
@@ -58,17 +60,36 @@ kyverno-cli` installs pinned, checksum-verified tools into `~/.local/bin`.
 ```bash
 make cluster kyverno policies falco     # kind + Calico, Kyverno, Falco
 
-make vulnerable && make smoke           # deploy the misconfigured app
-make scenario-2                         # run one attack demo
+make vulnerable                         # deploy the misconfigured app
+make verify-detection                   # Falco rules (run first, right after a deploy)
+make smoke                              # the app works
 bash scripts/verify-all.sh --expect exploitable
+make scenario-2                         # run one attack demo
 
-make hardened && make smoke             # same app, defenses on
+make hardened                           # same app, defenses on
+make verify-detection && make smoke
 bash scripts/verify-all.sh --expect blocked
-make verify-detection                   # Falco rules fire / stay silent as expected
 
 make policy-test verify-admission reports
 make help                               # all targets
 ```
+
+## CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same make
+targets on every push:
+
+- **static** (~20 s): kustomize + kubeconform, `kyverno test`, shellcheck,
+  Falco rule compilation, gitleaks, `trivy config`. Hardened must be clean;
+  vulnerable must still have HIGH findings.
+- **image** (~40 s): the api image is pushed to a throwaway local registry
+  and scanned with trivy **by digest**; the SBOM is kept as an artifact.
+- **e2e** (~5 min): kind + Calico + Kyverno + Falco. Both overlays are
+  deployed, with `verify-all --expect exploitable / blocked`,
+  `verify-detection`, smoke, `verify-admission` and `reports`.
+
+Actions are pinned by SHA, tools by version and SHA-256, and the token is
+read-only. Locally, `make ci-static scan-image` runs the first two jobs.
 
 ## Docs
 

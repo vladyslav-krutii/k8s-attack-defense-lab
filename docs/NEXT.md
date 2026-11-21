@@ -1,6 +1,6 @@
 # Next session handoff
 
-_Last updated: 2026-11-21. Phase 5 is done._
+_Last updated: 2026-11-21. Phase 6 (CI) is done._
 
 ## Current state
 
@@ -14,7 +14,7 @@ _Last updated: 2026-11-21. Phase 5 is done._
   has custom rules in [`detection/falco/`](../detection/falco/README.md).
 - **Phase 5 done (scenarios 4–6).** Hardened layers 4–6, Kyverno
   policies (four new, `require-resource-limits` moved to enforce), three
-  new Falco rules, plus the api image `0.2.0`, which reads
+  new Falco rules, plus the api image (now `0.2.1`), which reads
   `PGPASSWORD_FILE`.
 
   | # | Scenario | vulnerable | hardened (layer) | Kyverno (enforce in hardened) |
@@ -71,84 +71,115 @@ _Last updated: 2026-11-21. Phase 5 is done._
 
 ```bash
 make cluster kyverno policies falco
-make vulnerable && make smoke && bash scripts/verify-all.sh --expect exploitable && make verify-detection
-make hardened   && make smoke && bash scripts/verify-all.sh --expect blocked     && make verify-detection
+make vulnerable && make verify-detection && make smoke && bash scripts/verify-all.sh --expect exploitable
+make hardened   && make verify-detection && make smoke && bash scripts/verify-all.sh --expect blocked
 make policy-test verify-admission reports
+make ci-static scan-image    # the CI static and image jobs, locally
 ```
 
-`make verify-detection` has to run right after a deploy (it measures the
-start-up window from the namespace creation). Scenario 6's `run.sh` needs
+`make verify-detection` has to run right after a deploy, before anything
+else execs into the pods: it measures the start-up window from the
+namespace creation, and the first CI run failed exactly on that. Scenario 6's `run.sh` needs
 `docker` and `kind` on the host.
 
-## Next: Phase 6 — CI for the lab (GitHub Actions)
+## Phase 6 — CI: DONE
 
-There is no CI yet (`.github/` does not exist). Plan, from cheap to
-expensive:
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every
+push to `main`, on PRs and on demand. Every job calls the same make targets
+a person runs locally.
 
-1. **Static job (every push and PR, about a minute).**
-   - `kubectl kustomize` for base, both overlays and `policies/kyverno`. The
-     hardened overlay renders without the api digest, which is fine for
-     linting.
-   - `kubeconform -strict -summary` against the K8s 1.36 schemas, plus the
-     Kyverno CRD schemas (datree CRDs-catalog) for the policies.
-   - `kyverno test policies/kyverno/tests --require-tests` with the pinned
-     CLI (`scripts/install-kyverno-cli.sh`).
-   - `shellcheck` on `scripts/*.sh` and `scenarios/**/*.sh`. Expect some
-     findings to fix first, e.g. `SC2016` in the intentional single-quoted
-     `sh -c` scripts.
-   - Falco rules validation: `falco -V lab-rules.yaml` in the pinned Falco
-     image, or `falcoctl`.
-   - Secret scanning (gitleaks) and `trivy config` on the manifests. The
-     vulnerable overlay *must* produce findings, so scan hardened only, or
-     scan both and assert a difference.
-2. **Image job.** Build `app/api`, then `trivy image` (fail on
-   CRITICAL/HIGH with a fix available). Keep provenance in CI (it is
-   disabled only for the local kind build).
-3. **e2e job on kind (`helm/kind-action`, pinned).**
-   - `make cluster kyverno policies`, then
-     `vulnerable` + `verify-all --expect exploitable`, then
-     `hardened` + `verify-all --expect blocked`, plus `smoke`,
-     `verify-admission` and `reports`.
-   - Falco first needs a check that `modern_ebpf` works on GitHub-hosted
-     runners (kernel version, BTF). If it does, add `verify-detection`;
-     otherwise make that step optional and document why.
-   - Watch the job time: Calico plus image pulls take several minutes. Cache
-     images if possible.
-4. **Hygiene.** Pin actions by commit SHA (the same supply-chain argument as
-   scenario 6), set `permissions: contents: read`, and use Dependabot for
-   actions and base images.
+| Job | What | Time |
+|---|---|---|
+| `static` | `make lint` (kustomize + kubeconform, 63/63), `policy-test` (105/105), `shellcheck`, `falco-validate`, `secrets-scan` (gitleaks over the history), `scan-config` | ~20 s |
+| `image` | `make scan-image`: push to a throwaway registry, trivy by digest, SBOM artifact | ~40 s |
+| `e2e` | kind + Calico, Kyverno + policies, Falco; vulnerable (verify-detection, `verify-all --expect exploitable`), hardened (verify-detection, smoke, `verify-all --expect blocked`), `verify-admission`, `reports` | ~5 min |
 
-Add a LEARNING entry per commit, and confirm CI green on GitHub after each
-push.
+**First green run of all three jobs:** run 44935042747 on `b9f5c59`.
 
-## Then: Phase 7 — README, threat model, INTERVIEW.md
+- **How the deliberately bad overlay is handled.** Opposite gates. Hardened
+  must be clean (trivy config MEDIUM+, `verify-all --expect blocked`).
+  Vulnerable must stay bad (trivy config must report HIGH findings,
+  currently 11; `verify-all --expect exploitable`). A "clean" vulnerable
+  overlay means the demo or the scanner broke.
+- **Accepted findings** are listed with a reason in
+  [`.trivyignore.yaml`](../.trivyignore.yaml): KSV-0125 for the local api
+  and nginxinc images. LOW findings (UID > 10000) are printed, not gated.
+- **Supply chain of the CI itself.**
+  - Only GitHub's own actions are used (`checkout`, `upload-artifact`),
+    pinned by commit SHA.
+  - Tools are release binaries with verified SHA-256
+    ([`scripts/install-ci-tools.sh`](../scripts/install-ci-tools.sh)).
+  - kubeconform schemas are pinned to commits, Falco and registry images
+    to digests.
+  - Permissions: `permissions: {}` for the workflow, `contents: read` per
+    job, and `persist-credentials: false`.
+- **Found on the way.**
+  - The api image shipped npm with 6 fixable HIGH CVEs. npm, corepack and
+    yarn are now removed from the runtime stage (image `0.2.1`).
+  - 28 shellcheck findings: one real printf bug was fixed, and each
+    intentional SC2016 has its reason next to it.
+  - The first e2e run failed because verify-all ran before
+    verify-detection and polluted its start-up window. The steps are now
+    in the right order.
+- **Falco on GitHub-hosted runners: works.** `modern_ebpf` starts, and all
+  six rules match the documented matrix on both overlays.
+- **Not done, deliberately.** The images are not pushed to a real registry
+  and not signed with Cosign. That belongs to scenario 7 (SecScan on GHCR).
+  Builds are not byte-reproducible across machines (the CI digest differs
+  from the local one), so scanning has to name the exact digest.
 
-- **README rewrite.**
-  - An architecture diagram (web → api → db, the hardened layers, Kyverno
-    and Falco around them).
-  - A results table generated from `verify-all` and `verify-detection`
-    output.
-  - How to read the exit codes.
-  - What is simulated: `kubectl exec` stands in for RCE, `kind load` for a
-    registry push.
-- **`docs/THREAT-MODEL.md`.**
-  - Assets: DB password, node, Kubernetes API.
-  - Attacker positions: RCE in web, `view` user, push access to the
-    registry.
-  - STRIDE per tier, the MITRE ATT&CK / Kubernetes threat matrix mapping
-    for scenarios 1–7.
-  - Residual risks, taken from the "honest limits" above.
-- **`docs/INTERVIEW.md`** (like in SecScan). A 2-minute pitch, the story
-  of each scenario (misconfig → impact → fix → policy → detection), the
-  debugging war stories with evidence:
-  - the UDP `connect()` false alert;
-  - the shadowing rule (`rule_matching`);
-  - `kind load` and digests, BuildKit provenance;
-  - the reports controller stalling at its memory limit;
-  - busybox `argv[0]`;
-  - `grep` under `pipefail`.
+## Next: Phase 7 — README, threat model, INTERVIEW.md
 
-  Plus the strongest interview questions from `LEARNING.md`.
+Goal: a reviewer understands the project in 2 minutes and can verify every
+claim. One commit per document, plus LEARNING entries.
+
+1. **README rewrite** (replaces the short version).
+   - A pitch, then a CI badge.
+   - An architecture diagram (Mermaid, renders on GitHub): web → api → db,
+     the hardened layers 1–6 around them, Kyverno at admission, Falco at
+     runtime.
+   - The results tables: `verify-all` on both overlays, the detection
+     matrix, `trivy config` counts. Each one says which CI step proves it.
+   - How to read exit codes 0/1/2, what is simulated (`kubectl exec` = RCE
+     foothold, `kind load` = registry push) and what is out of scope.
+   - The quickstart, and the local equivalent of every CI job
+     (`make ci-static`, `make scan-image`, the e2e sequence).
+2. **`docs/THREAT-MODEL.md`.**
+   - Scope and trust boundaries: internet → web, web → api → db, pods →
+     the Kubernetes API, the node, the registry and CI.
+   - Assets: the DB password, node and kubelet credentials, the Kubernetes
+     API, the image supply chain.
+   - Attacker positions: RCE in web, a `view` user, push access to the
+     image tag, a compromised CI step.
+   - STRIDE per boundary, mapped to scenarios 1–6 (and 7), MITRE ATT&CK
+     and the Microsoft Kubernetes threat matrix.
+   - **Residual risks**, taken from each scenario's honest limits:
+     - the `/tmp` exec;
+     - the app user can read its own secret file;
+     - no signatures yet;
+     - the infra namespaces are excluded from Kyverno;
+     - the Falco logs contain command lines;
+     - the shell rule fires on hardened.
+3. **`docs/INTERVIEW.md`** (like in SecScan).
+   - A 2-minute pitch, and a 30-second version.
+   - Per scenario: misconfiguration → impact → fix → policy → detection
+     → limit, in five lines.
+   - Debugging stories, each with its evidence:
+     - the UDP `connect()` false alert;
+     - the `rule_matching: first` shadowing;
+     - `kind load` and digests, BuildKit provenance;
+     - the reports controller stalling at its memory limit;
+     - busybox `argv[0]`;
+     - `grep` under `pipefail`;
+     - the order dependence of the e2e test.
+   - Trade-offs to defend: audit → enforce, `secretKeyRef` enforced, a
+     non-privileged Falco, fail-closed webhooks with the infra exclusions,
+     the opposite CI gates.
+   - The strongest questions from `LEARNING.md`, with short answers.
+4. **Small polish.**
+   - A CI badge in the README.
+   - `make help` grouped (cluster / app / checks).
+   - Check every link in the docs.
 
 ## Later: Scenario 7 — SecScan (SSRF → Kubernetes API)
 
