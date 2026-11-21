@@ -119,23 +119,28 @@ jobs:
       - name: Install Falco (modern eBPF, lab rules)
         run: make falco
 
-      - name: Vulnerable overlay - deploy, smoke test
-        run: make vulnerable smoke
+      # Order matters: verify-detection must run right after the deploy,
+      # before verify-all execs into the pods, or those probes land in its
+      # start-up (false-positive) window. It runs the smoke test itself.
+      - name: Vulnerable overlay - deploy
+        run: make vulnerable
+
+      - name: Vulnerable overlay - Falco rules (incl. start-up and smoke windows)
+        run: make verify-detection
 
       - name: Vulnerable overlay - every scenario must be EXPLOITABLE
         run: bash scripts/verify-all.sh --expect exploitable
 
-      - name: Vulnerable overlay - Falco rules
+      - name: Hardened overlay - deploy
+        run: make hardened
+
+      - name: Hardened overlay - Falco rules (incl. start-up and smoke windows)
         run: make verify-detection
 
-      - name: Hardened overlay - deploy, smoke test
-        run: make hardened smoke
-
-      - name: Hardened overlay - every scenario must be BLOCKED
-        run: bash scripts/verify-all.sh --expect blocked
-
-      - name: Hardened overlay - Falco rules
-        run: make verify-detection
+      - name: Hardened overlay - smoke test, every scenario must be BLOCKED
+        run: |
+          make smoke
+          bash scripts/verify-all.sh --expect blocked
 
       - name: Kyverno alone blocks bad pods (no PSA)
         run: make verify-admission

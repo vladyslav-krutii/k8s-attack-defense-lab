@@ -32,8 +32,11 @@
 # Scenario 6 is not run: it has no runtime signal (a tampered image
 # behaves like the genuine one), and it restarts api mid-window.
 #
-# Run it right after "make vulnerable" or "make hardened": the start-up
-# window is measured from the creation of the namespace.
+# Run it right after "make vulnerable" or "make hardened", BEFORE anything
+# else touches the pods: the start-up window is measured from the creation
+# of the namespace, so a verify-all or a scenario demo run in between lands
+# in that window and its (real) alerts are counted as start-up noise. The
+# first CI run failed exactly like that.
 # Exit 0 if everything matches, 1 on a mismatch, 2 if the check could not run.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
@@ -115,7 +118,11 @@ echo "==> False-positive check"
 if [[ $startup_seen == yes ]]; then
   fp=$(window "$ns_created" "$startup_end" | lab_alerts)
   if [[ -z $fp ]]; then echo "PASS  start-up ($ns_created .. $startup_end): no lab alerts"
-  else echo "FAIL  start-up: lab alerts while the app started:"; cut -c1-220 <<<"$fp"; fail=1; fi
+  else
+    echo "FAIL  start-up: lab alerts while the app started:"; cut -c1-220 <<<"$fp"; fail=1
+    echo "      (parent=containerd-shim = a kubectl exec session. Did verify-all or a"
+    echo "       demo run between the deploy and this check? Run this first.)"
+  fi
 else
   echo "SKIP  start-up: Falco restarted after the deploy, the window was not observed"
 fi
