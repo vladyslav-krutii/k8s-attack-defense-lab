@@ -34,6 +34,10 @@ configMapGenerator:
     literals:
       - PGPASSWORD=lab-only-not-a-real-password
 
+# Scenario 5 is also by absence: like the base, no container sets
+# readOnlyRootFilesystem or resource limits, and web already runs as root
+# (scenario 1 patch).
+#
 # Scenario 3 is a misconfiguration by ABSENCE: this overlay defines no
 # NetworkPolicy, so every pod can reach every other pod on every port.
 # Nothing to patch - which is exactly why it is so common.

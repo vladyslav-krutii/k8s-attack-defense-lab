@@ -1,0 +1,79 @@
+# Layer 5 (scenario 5): read-only root filesystem + resource limits.
+#
+# readOnlyRootFilesystem: the image's files (binaries, config, libraries)
+# cannot be changed or extended - no tool dropped into /usr/local/bin, no
+# backdoored config, no persistence inside the container image layer.
+# Only the paths an app really writes get an emptyDir, each with a
+# sizeLimit so it cannot fill the node's disk either (the kubelet evicts
+# the pod when a limit is exceeded). Found by running each image read-only:
+#   web (nginx)    /tmp                 pid file and proxy/client temp files
+#   api (node)     nothing
+#   db  (postgres) /var/run/postgresql  unix socket and lock file
+#                  (+ PGDATA, already an emptyDir in the base)
+#
+# requests: what the scheduler reserves. limits: the cgroup ceiling - above
+# the memory limit the container is OOM-killed, above the CPU limit it is
+# throttled. Without them one compromised pod (cryptominer, fork bomb, leak)
+# can starve the whole node.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      containers:
+        - name: nginx
+          securityContext:
+            readOnlyRootFilesystem: true
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          securityContext:
+            readOnlyRootFilesystem: true
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+spec:
+  template:
+    spec:
+      containers:
+        - name: postgres
+          securityContext:
+            readOnlyRootFilesystem: true
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          volumeMounts:
+            - name: run
+              mountPath: /var/run/postgresql
+      volumes:
+        - name: run
+          emptyDir:
+            sizeLimit: 1Mi
+        # The data directory gets a ceiling, too (base: emptyDir without one).
+        - name: data
+          emptyDir:
+            sizeLimit: 1Gi
