@@ -48,34 +48,28 @@ cover**. The residual risks are collected in the
 
 ```mermaid
 flowchart TB
-    deploy(["make hardened"]) --> psa
-    user(["User / smoke test"]) -->|"port-forward :8080"| web
-    attacker(["Attacker: RCE in web<br/>(simulated by kubectl exec)"]) -.-> web
-
-    subgraph admission["Admission: every create and update"]
-        direction LR
-        psa{{"Pod Security<br/>restricted"}} --> kyverno{{"Kyverno: 9 CEL policies<br/>enforce, fail-closed"}}
-    end
-
-    kyverno -->|"compliant pods only"| web
+    admission{{"Admission on every create/update:<br/>Pod Security restricted +<br/>Kyverno, 9 CEL policies, fail-closed"}}
+    user(["User / smoke test"])
+    attacker(["Attacker: RCE in web<br/>(simulated by kubectl exec)"])
+    falco["Falco DaemonSet<br/>modern eBPF, 6 lab rules"]
 
     subgraph demo["namespace demo (hardened)"]
-        direction LR
-        web["web<br/>nginx, non-root"] -->|":3000"| api["api<br/>Node.js"] -->|":5432"| db[("db<br/>Postgres")]
-        secret[/"Secret as a 0440<br/>read-only file"/] -.-> api
+        web["web<br/>nginx, non-root, read-only"]
+        api["api, Node.js<br/>password from a 0440 file"]
+        db[("db<br/>Postgres")]
     end
 
-    falco["Falco DaemonSet<br/>modern eBPF, 6 lab rules"] -. "watches syscalls" .-> demo
+    k8sapi["Kubernetes API"]
+    node["Node FS, kubelet PKI"]
 
-    subgraph offlimits["Off-limits from web"]
-        direction LR
-        k8sapi["Kubernetes API"]
-        node["Node FS,<br/>kubelet PKI"]
-    end
-
-    web -. "blocked: no token,<br/>egress deny" .-> k8sapi
-    web -. "blocked: no hostPath" .-> node
+    admission -->|"compliant pods only"| web
+    user -->|"port-forward :8080"| web
+    attacker -.-> web
+    falco -. "syscalls" .-> demo
+    web -->|":3000"| api -->|":5432"| db
     web -. "blocked: NetworkPolicy" .-> db
+    web -. "blocked: no token, egress deny" .-> k8sapi
+    web -. "blocked: no hostPath" .-> node
 ```
 
 The vulnerable overlay is the same picture with every dotted "blocked"
