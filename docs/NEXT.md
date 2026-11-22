@@ -1,6 +1,7 @@
 # Next session handoff
 
-_Last updated: 2026-11-21. Phase 6 (CI) is done; next is Phase 7 (docs)._
+_Last updated: 2026-11-22. **The project is DONE**: Phases 0–7 are
+complete. What is left is optional (see "Optional extensions" below)._
 
 ## Current state
 
@@ -57,8 +58,9 @@ _Last updated: 2026-11-21. Phase 6 (CI) is done; next is Phase 7 (docs)._
   - The Kyverno reports controller kept losing its leader lease at the
     chart's 128Mi memory limit (exit 0, no OOM kill); it now has 512Mi.
   - `make reports` now counts only workload reports.
-- **Root README.** Short version with the scenario table and a quickstart;
-  the full one is Phase 7.
+- **Phase 6 done (CI)** and **Phase 7 done (docs)**: see the sections
+  below. Full [README](../README.md), [threat model](THREAT_MODEL.md),
+  [interview notes](INTERVIEW.md).
 - **SecScan.** The `secscan` namespace (another project, with its own
   NetworkPolicy and `NamespacedImageValidatingPolicy`) was not touched. Lab
   policies only select namespaces with a `lab/kyverno` label, and the Falco
@@ -132,96 +134,52 @@ a person runs locally.
   Builds are not byte-reproducible across machines (the CI digest differs
   from the local one), so scanning has to name the exact digest.
 
-## Next: Phase 7 — README, threat model, INTERVIEW.md
+## Phase 7 — docs: DONE
 
-Goal: a reviewer understands the project in 2 minutes and can verify every
-claim. One commit per document, plus LEARNING entries.
+A reviewer understands the project in two minutes and can check every
+claim. Format reference: the SecScan repo.
 
-**How to start the session.**
-1. `git log --oneline -15`, then check CI on `main` (`gh run list --limit 3`).
-   The last green run with all three jobs is 44936044477 on `9568ac3`.
-2. Open the SecScan repo's README, threat model and `INTERVIEW.md` as the
-   format reference (ask the user for the path or URL if it is not at
-   hand). Match the structure and tone; the content comes from this lab.
-3. Sources for every claim:
-   - `docs/LEARNING.md` (the why, the debugging stories, the questions);
-   - each `scenarios/0N-*/README.md` (impact, fix, limits);
-   - `detection/falco/README.md`;
-   - the CI logs (the numbers).
+| Document | What |
+|---|---|
+| [`README.md`](../README.md) | pitch; scenario table (misconfiguration → attack → hardened layer → Falco rule → verify target); Mermaid architecture (checked on GitHub: renders in full); defense layers linked to files; results of CI run 44936598909; exit codes, what is simulated, out of scope; quickstart with PowerShell/WSL notes; CI jobs with local equivalents |
+| [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) | STRIDE per trust boundary: threat → control → where → how verified (verify-N, verify-admission, kyverno test, verify-detection, CI job; "review only" where nothing checks it); the controls themselves as targets; accepted risks and known limits |
+| [`docs/INTERVIEW.md`](INTERVIEW.md) | Ukrainian: 3-minute story, scenarios in one table, the six hardest findings, 20 Q&A, 5-minute demo script, honest limits |
 
-   Do not invent numbers: copy them from a CI run and name that run.
-4. Order: README first (the most visible on the GitHub profile), then
-   THREAT-MODEL.md, then INTERVIEW.md. Push after each one and confirm CI
-   is green.
-5. No cluster is needed for Phase 7. Docker Desktop only matters for
-   re-running checks.
+- **Checked on the cluster on the way (2026-11-22, hardened).** In-cluster
+  web → `db:5432` is BLOCKED, but `kubectl port-forward deploy/db` reaches
+  Postgres: the kubelet enters the pod's netns, so NetworkPolicy never sees
+  it. `lab:developers` cannot `create pods/portforward`. Recorded as an
+  accepted risk.
+- **Repo metadata.** The description and topics on GitHub match the README.
+- **The docs rule stays.** Numbers come from a named CI run; re-run and
+  update them together if anything changes.
 
-1. **README rewrite** (replaces the short version).
-   - A pitch, then a CI badge.
-   - An architecture diagram (Mermaid, renders on GitHub): web → api → db,
-     the hardened layers 1–6 around them, Kyverno at admission, Falco at
-     runtime.
-   - The results tables: `verify-all` on both overlays, the detection
-     matrix, `trivy config` counts. Each one says which CI step proves it.
-   - How to read exit codes 0/1/2, what is simulated (`kubectl exec` = RCE
-     foothold, `kind load` = registry push) and what is out of scope.
-   - The quickstart, and the local equivalent of every CI job
-     (`make ci-static`, `make scan-image`, the e2e sequence).
-2. **`docs/THREAT-MODEL.md`.**
-   - Scope and trust boundaries: internet → web, web → api → db, pods →
-     the Kubernetes API, the node, the registry and CI.
-   - Assets: the DB password, node and kubelet credentials, the Kubernetes
-     API, the image supply chain.
-   - Attacker positions: RCE in web, a `view` user, push access to the
-     image tag, a compromised CI step.
-   - STRIDE per boundary, mapped to scenarios 1–6 (and 7), MITRE ATT&CK
-     and the Microsoft Kubernetes threat matrix.
-   - **Residual risks**, taken from each scenario's honest limits:
-     - the `/tmp` exec;
-     - the app user can read its own secret file;
-     - no signatures yet;
-     - the infra namespaces are excluded from Kyverno;
-     - the Falco logs contain command lines;
-     - the shell rule fires on hardened.
-3. **`docs/INTERVIEW.md`** (like in SecScan).
-   - A 2-minute pitch, and a 30-second version.
-   - Per scenario: misconfiguration → impact → fix → policy → detection
-     → limit, in five lines.
-   - Debugging stories, each with its evidence:
-     - the UDP `connect()` false alert;
-     - the `rule_matching: first` shadowing;
-     - `kind load` and digests, BuildKit provenance;
-     - the reports controller stalling at its memory limit;
-     - busybox `argv[0]`;
-     - `grep` under `pipefail`;
-     - the order dependence of the e2e test.
-   - Trade-offs to defend: audit → enforce, `secretKeyRef` enforced, a
-     non-privileged Falco, fail-closed webhooks with the infra exclusions,
-     the opposite CI gates.
-   - The strongest questions from `LEARNING.md`, with short answers.
-4. **Small polish.**
-   - A CI badge in the README.
-   - `make help` grouped (cluster / app / checks).
-   - Check every link in the docs.
+## Optional extensions
 
-## Later: Scenario 7 — SecScan (SSRF → Kubernetes API)
+None of these is required; each is a self-contained next step.
 
-SecScan (already running in `secscan` with its own NetworkPolicy and a
-Cosign `NamespacedImageValidatingPolicy`) becomes scenario 7. The attack:
-a URL fetched by SecScan is pointed at `https://kubernetes.default.svc`
-(with a mounted token) or at other internal Services.
-
-Defenses:
-- no token automount;
-- an egress NetworkPolicy without the API server;
-- the Falco outbound rule generalized to SecScan;
-- the Kyverno **`ImageValidatingPolicy`** for its Cosign signature, signed
-  in SecScan's CI and pulled from GHCR. That is where signature
-  verification fits, since a local `kind load` image has nowhere to store a
-  signature.
-
-Coordinate with the SecScan repo: the lab must not change its namespace
-without that project's manifests.
+1. **Scenario 7: SecScan SSRF → Kubernetes API.** SecScan already runs in
+   the `secscan` namespace with its own NetworkPolicy and a Cosign
+   `NamespacedImageValidatingPolicy`. The attack: SecScan fetches a URL
+   pointed at `https://kubernetes.default.svc` (with a mounted token) or at
+   other internal Services. Defenses: no token automount, an egress policy
+   without the API server, the Falco outbound rule generalized to SecScan,
+   and a Kyverno `ImageValidatingPolicy` for its Cosign signature (signed
+   in SecScan's CI, pulled from GHCR). **Coordinate with the SecScan repo;
+   the lab must not change the `secscan` namespace on its own.**
+2. **Cosign verification for the lab's own api image.** A local registry
+   reachable by both the kind nodes and Kyverno (kind's
+   `containerdConfigPatches` mirror + a `registry:3` container on the kind
+   network). Build → push → `cosign sign` (key pair for the lab, or keyless
+   in CI) → `ImageValidatingPolicy` with `attestors`. This removes the
+   KSV-0125 entry from `.trivyignore.yaml` and closes "digest says what,
+   not who" from scenario 6.
+3. **Falcosidekick alerts.** Forward Falco alerts to a webhook, Slack or a
+   local Loki/Grafana; add a `make` target that shows one alert arriving.
+   Keep it local-only.
+4. Smaller ideas: distroless `web` so rule 1 can stay silent on hardened;
+   `make help` grouped by cluster / app / checks; Calico flow logs for
+   denied flows; 3 Kyverno admission replicas with a PDB.
 
 ## Environment gotchas
 
