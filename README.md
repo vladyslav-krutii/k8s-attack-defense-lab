@@ -47,38 +47,35 @@ cover**. The residual risks are collected in the
 ## Architecture
 
 ```mermaid
-flowchart LR
-    attacker(["Attacker foothold:<br/>RCE in web<br/>(simulated by kubectl exec)"])
-    viewer(["Developer with<br/>the view role"])
-    user(["User / smoke test"])
+flowchart TB
+    deploy(["make hardened"]) --> psa
+    user(["User / smoke test"]) -->|"port-forward :8080"| web
+    attacker(["Attacker: RCE in web<br/>(simulated by kubectl exec)"]) -.-> web
 
-    subgraph kind["kind cluster: control plane + worker, Calico CNI"]
+    subgraph admission["Admission: every create and update"]
         direction LR
-        subgraph admission["Admission, on every create and update"]
-            direction TB
-            psa{{"Pod Security<br/>restricted"}} --> kyverno{{"Kyverno<br/>9 CEL ValidatingPolicies<br/>fail-closed"}}
-        end
-
-        subgraph demo["namespace demo (hardened)"]
-            direction LR
-            web["web<br/>nginx, non-root"] -->|":3000"| api["api<br/>Node.js"] -->|":5432"| db[("db<br/>Postgres")]
-            secret["Secret as a<br/>0440 read-only file"] -.-> api
-            secret -.-> db
-        end
-
-        k8sapi["Kubernetes API"]
-        node["Node FS,<br/>kubelet PKI"]
-        falco["Falco DaemonSet<br/>modern eBPF, not privileged<br/>6 lab rules"]
+        psa{{"Pod Security<br/>restricted"}} --> kyverno{{"Kyverno: 9 CEL policies<br/>enforce, fail-closed"}}
     end
 
-    kyverno -->|"only compliant pods"| demo
-    user -->|"port-forward :8080"| web
-    attacker -.-> web
-    viewer -. "ConfigMaps, pod specs:<br/>no password" .-> demo
-    web -. "blocked: NetworkPolicy" .-> db
-    web -. "blocked: no token, egress deny" .-> k8sapi
+    kyverno -->|"compliant pods only"| web
+
+    subgraph demo["namespace demo (hardened)"]
+        direction LR
+        web["web<br/>nginx, non-root"] -->|":3000"| api["api<br/>Node.js"] -->|":5432"| db[("db<br/>Postgres")]
+        secret[/"Secret as a 0440<br/>read-only file"/] -.-> api
+    end
+
+    falco["Falco DaemonSet<br/>modern eBPF, 6 lab rules"] -. "watches syscalls" .-> demo
+
+    subgraph offlimits["Off-limits from web"]
+        direction LR
+        k8sapi["Kubernetes API"]
+        node["Node FS,<br/>kubelet PKI"]
+    end
+
+    web -. "blocked: no token,<br/>egress deny" .-> k8sapi
     web -. "blocked: no hostPath" .-> node
-    falco -. "syscalls" .-> demo
+    web -. "blocked: NetworkPolicy" .-> db
 ```
 
 The vulnerable overlay is the same picture with every dotted "blocked"
